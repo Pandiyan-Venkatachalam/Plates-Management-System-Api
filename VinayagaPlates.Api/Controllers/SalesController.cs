@@ -159,7 +159,16 @@ namespace VinayagaPlates.Api.Controllers
                     _db.SaleDetails.RemoveRange(sale.Details);
                     await _db.SaveChangesAsync();
 
-                    // 3. Remove parent sale record
+                    // 3. Remove linked account transactions
+                    var linkedTxs = await _db.AccountTransactions
+                        .Where(t => t.ReferenceType == "SALE" && (t.ReferenceId == id.ToString() || t.ReferenceId == sale.SaleNumber))
+                        .ToListAsync();
+                    if (linkedTxs.Any())
+                    {
+                        _db.AccountTransactions.RemoveRange(linkedTxs);
+                    }
+
+                    // 4. Remove parent sale record
                     _db.Sales.Remove(sale);
                     await _db.SaveChangesAsync();
 

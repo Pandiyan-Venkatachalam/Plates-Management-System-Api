@@ -45,7 +45,8 @@ namespace VinayagaPlates.Api.Controllers
                     req.Description,
                     req.Amount,
                     req.AccountId,
-                    User.Identity?.Name ?? "SYSTEM");
+                    User.Identity?.Name ?? "SYSTEM",
+                    req.Contributions);
 
                 return StatusCode(201, ApiResponse<object>.Success(createdExpense, "Expense recorded successfully.", 201));
             }

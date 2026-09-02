@@ -1,23 +1,13 @@
-# User-specific files
-*.rsuser
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Re]leases/
-x64/
-x86/
-build/
-bld/
+## Visual Studio / .NET Core
 [Bb]in/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
-
-# Visual Studio 2015/2017 cache directory
+publish/
 .vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+appsettings.Production.json
+appsettings.Local.json

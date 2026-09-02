@@ -1,7 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using VinayagaPlates.Application;
 using VinayagaPlates.Application.Repositories;
 using VinayagaPlates.Application.Services;
 using VinayagaPlates.Contracts.DTOs;
@@ -17,12 +20,14 @@ namespace VinayagaPlates.Api.Controllers
         private readonly IPartnerLedgerRepository _ledgerRepo;
         private readonly IPartnerRepository _partnerRepo;
         private readonly VpmsService _vpms;
+        private readonly ApplicationDbContext _db;
 
-        public PartnerLedgerController(IPartnerLedgerRepository ledgerRepo, IPartnerRepository partnerRepo, VpmsService vpms)
+        public PartnerLedgerController(IPartnerLedgerRepository ledgerRepo, IPartnerRepository partnerRepo, VpmsService vpms, ApplicationDbContext db)
         {
             _ledgerRepo = ledgerRepo;
             _partnerRepo = partnerRepo;
             _vpms = vpms;
+            _db = db;
         }
 
         [HttpGet]
@@ -124,15 +129,31 @@ namespace VinayagaPlates.Api.Controllers
             if (ledger == null)
                 return StatusCode(404, ApiResponse<string>.Fail("Ledger entry not found.", 404));
 
+            var oldAmount = ledger.Amount;
+            var oldDesc = ledger.Description;
+
             ledger.PartnerId = req.PartnerId;
             ledger.TransactionType = req.TransactionType;
             ledger.Amount = req.Amount;
             ledger.Description = req.Description;
             ledger.CreatedBy = User.Identity?.Name ?? "SYSTEM";
-            ledger.CreatedAt = DateTime.UtcNow;
 
             _ledgerRepo.Update(ledger);
             await _ledgerRepo.SaveChangesAsync();
+
+            // Synchronize linked AccountTransaction
+            var allTxs = await _db.AccountTransactions.ToListAsync();
+            var matchedTx = allTxs.FirstOrDefault(t => 
+                t.ReferenceType == "PARTNER_TRANSACTION" && 
+                (t.ReferenceId == $"LEDGER-{id}" || (t.Amount == oldAmount && t.Description.Contains(oldDesc ?? ""))));
+            if (matchedTx != null)
+            {
+                matchedTx.Amount = req.Amount;
+                matchedTx.TransactionType = req.TransactionType == "INVESTMENT" ? "CREDIT" : "DEBIT";
+                matchedTx.Description = $"{req.TransactionType} by Partner. Details: {req.Description}";
+                _db.AccountTransactions.Update(matchedTx);
+                await _db.SaveChangesAsync();
+            }
 
             var partner = await _partnerRepo.GetByIdAsync(ledger.PartnerId);
             var res = new PartnerLedgerResponse(
@@ -156,8 +177,19 @@ namespace VinayagaPlates.Api.Controllers
             if (ledger == null)
                 return StatusCode(404, ApiResponse<string>.Fail("Ledger entry not found.", 404));
 
+            // Clean up corresponding AccountTransaction if any
+            var allTxs = await _db.AccountTransactions.ToListAsync();
+            var matchedTx = allTxs.FirstOrDefault(t => 
+                t.ReferenceType == "PARTNER_TRANSACTION" && 
+                (t.ReferenceId == $"LEDGER-{id}" || (t.Amount == ledger.Amount && t.Description.Contains(ledger.Description ?? ""))));
+            if (matchedTx != null)
+            {
+                _db.AccountTransactions.Remove(matchedTx);
+            }
+
             _ledgerRepo.Delete(ledger);
             await _ledgerRepo.SaveChangesAsync();
+            await _db.SaveChangesAsync();
 
             var response = ApiResponse<object>.Success(null, "Ledger entry deleted successfully.");
             return StatusCode(response.StatusCode, response);

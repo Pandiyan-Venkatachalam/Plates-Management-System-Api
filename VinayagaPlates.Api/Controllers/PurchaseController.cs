@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using VinayagaPlates.Application;
 using VinayagaPlates.Application.Repositories;
 using VinayagaPlates.Application.Services;
 using VinayagaPlates.Contracts.DTOs;
@@ -18,11 +20,13 @@ namespace VinayagaPlates.Api.Controllers
     {
         private readonly IPurchaseRepository _purchaseRepo;
         private readonly VpmsService _vpms;
+        private readonly ApplicationDbContext _db;
 
-        public PurchaseController(IPurchaseRepository purchaseRepo, VpmsService vpms)
+        public PurchaseController(IPurchaseRepository purchaseRepo, VpmsService vpms, ApplicationDbContext db)
         {
             _purchaseRepo = purchaseRepo;
             _vpms = vpms;
+            _db = db;
         }
 
         [HttpGet]
@@ -121,6 +125,16 @@ namespace VinayagaPlates.Api.Controllers
             var purchase = await _purchaseRepo.GetByIdAsync(id);
             if (purchase == null)
                 return NotFound(ApiResponse<object>.Fail("Purchase not found.", 404));
+
+            // Clean up linked AccountTransactions
+            var linkedTxs = await _db.AccountTransactions
+                .Where(t => t.ReferenceType == "PURCHASE" && (t.ReferenceId == id.ToString() || t.ReferenceId == purchase.PurchaseNumber))
+                .ToListAsync();
+            if (linkedTxs.Any())
+            {
+                _db.AccountTransactions.RemoveRange(linkedTxs);
+                await _db.SaveChangesAsync();
+            }
 
             _purchaseRepo.Delete(purchase);
             await _purchaseRepo.SaveChangesAsync();
