@@ -71,32 +71,36 @@ namespace VinayagaPlates.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] PartnerLedgerCreateRequest req)
         {
-            var ledger = new PartnerLedger
+            try
             {
-                PartnerId = req.PartnerId,
-                TransactionType = req.TransactionType,
-                Amount = req.Amount,
-                Description = req.Description,
-                CreatedBy = User.Identity?.Name ?? "SYSTEM",
-                CreatedAt = DateTime.UtcNow
-            };
+                await _vpms.RecordPartnerTransactionAsync(
+                    req.PartnerId,
+                    req.TransactionType,
+                    req.Amount,
+                    req.Description,
+                    null,
+                    User.Identity?.Name ?? "SYSTEM");
 
-            await _ledgerRepo.AddAsync(ledger);
-            await _ledgerRepo.SaveChangesAsync();
+                var partner = await _partnerRepo.GetByIdAsync(req.PartnerId);
+                var latest = (await _ledgerRepo.GetLedgerWithPartnerAsync()).OrderByDescending(l => l.LedgerId).FirstOrDefault();
+                var res = new PartnerLedgerResponse(
+                    latest?.LedgerId ?? 0,
+                    req.PartnerId,
+                    partner?.PartnerName ?? "",
+                    req.TransactionType,
+                    req.Amount,
+                    req.Description,
+                    latest?.CreatedAt ?? DateTime.UtcNow
+                );
 
-            var partner = await _partnerRepo.GetByIdAsync(ledger.PartnerId);
-            var res = new PartnerLedgerResponse(
-                ledger.LedgerId,
-                ledger.PartnerId,
-                partner?.PartnerName ?? "",
-                ledger.TransactionType,
-                ledger.Amount,
-                ledger.Description,
-                ledger.CreatedAt
-            );
-
-            var response = ApiResponse<PartnerLedgerResponse>.Success(res, "Ledger entry created successfully.", 201);
-            return StatusCode(response.StatusCode, response);
+                var response = ApiResponse<PartnerLedgerResponse>.Success(res, "Ledger entry created successfully.", 201);
+                return StatusCode(response.StatusCode, response);
+            }
+            catch (ArgumentException ex)
+            {
+                var response = ApiResponse<string>.Fail(ex.Message, 400);
+                return StatusCode(response.StatusCode, response);
+            }
         }
 
         [HttpPost("create-transaction")]

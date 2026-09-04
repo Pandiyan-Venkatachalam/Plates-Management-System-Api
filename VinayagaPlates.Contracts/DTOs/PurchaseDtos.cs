@@ -81,5 +81,7 @@ namespace VinayagaPlates.Contracts.DTOs
         decimal TotalAmount,
         decimal PaidAmount,
         string PaymentStatus,
-        string Status);
+        string Status,
+        string? PaymentMethodAccountName = null,
+        List<PaymentContributionRequest>? PaymentContributions = null);
 }

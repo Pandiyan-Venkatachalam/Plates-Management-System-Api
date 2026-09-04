@@ -656,7 +656,7 @@ namespace VinayagaPlates.Application.Services
                 }
             }
 
-            await _partnerRepo.AddLedgerEntryAsync(new PartnerLedger
+            var ledger = new PartnerLedger
             {
                 PartnerId = partnerId,
                 TransactionType = type,
@@ -664,7 +664,9 @@ namespace VinayagaPlates.Application.Services
                 Description = desc,
                 CreatedBy = username,
                 CreatedAt = DateTime.UtcNow
-            });
+            };
+            await _partnerRepo.AddLedgerEntryAsync(ledger);
+            await _partnerRepo.SaveChangesAsync();
 
             var financialTxType = type == "INVESTMENT" ? "CREDIT" : "DEBIT";
 
@@ -674,13 +676,12 @@ namespace VinayagaPlates.Application.Services
                 TransactionType = financialTxType,
                 Amount = amount,
                 ReferenceType = "PARTNER_TRANSACTION",
-                ReferenceId = "PART-" + DateTime.UtcNow.Ticks,
+                ReferenceId = $"LEDGER-{ledger.LedgerId}",
                 Description = $"{type} by Partner. Details: {desc}",
                 CreatedBy = username,
                 CreatedAt = DateTime.UtcNow
             });
 
-            await _partnerRepo.SaveChangesAsync();
             await _accountRepo.SaveChangesAsync();
             await LogAuditAsync(username, "PARTNER_TRANSACTION", "TB_PARTNER_LEDGER", partnerId.ToString(), null, $"{type}: {amount}");
         }
@@ -982,6 +983,76 @@ namespace VinayagaPlates.Application.Services
                     purchase.Status = req.Status;
                     purchase.UpdatedBy = username;
                     purchase.UpdatedAt = DateTime.UtcNow;
+
+                    // 5. Synchronize Purchase AccountTransaction
+                    var purchaseRefId = purchase.PurchaseId.ToString();
+                    var existingTxs = await _db.AccountTransactions
+                        .Where(t => t.ReferenceType == "PURCHASE" && (t.ReferenceId == purchaseRefId || t.ReferenceId == purchase.PurchaseNumber))
+                        .ToListAsync();
+
+                    if (req.PaymentContributions != null && req.PaymentContributions.Any(c => c.Amount > 0))
+                    {
+                        _db.AccountTransactions.RemoveRange(existingTxs);
+                        foreach (var contrib in req.PaymentContributions.Where(c => c.Amount > 0))
+                        {
+                            var acc = await _accountRepo.GetByNameAsync(contrib.AccountName)
+                                      ?? await _db.BusinessAccounts.FirstOrDefaultAsync(a => a.AccountId.ToString() == contrib.AccountName);
+                            if (acc != null)
+                            {
+                                await _accountRepo.AddTransactionAsync(new AccountTransaction
+                                {
+                                    AccountId = acc.AccountId,
+                                    TransactionType = "DEBIT",
+                                    Amount = contrib.Amount,
+                                    ReferenceType = "PURCHASE",
+                                    ReferenceId = purchase.PurchaseId.ToString(),
+                                    Description = $"Paid ₹{contrib.Amount:N2} for Purchase {purchase.PurchaseNumber}",
+                                    CreatedBy = username,
+                                    CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
+                                });
+                            }
+                        }
+                    }
+                    else if (req.PaidAmount > 0)
+                    {
+                        var targetAcc = !string.IsNullOrWhiteSpace(req.PaymentMethodAccountName)
+                            ? await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName)
+                            : (existingTxs.FirstOrDefault()?.AccountId != null 
+                                ? await _accountRepo.GetByIdAsync(existingTxs.First().AccountId)
+                                : await _accountRepo.GetByIdAsync(1));
+
+                        if (targetAcc != null)
+                        {
+                            if (existingTxs.Count == 1)
+                            {
+                                var tx = existingTxs.First();
+                                tx.AccountId = targetAcc.AccountId;
+                                tx.Amount = req.PaidAmount;
+                                tx.CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow;
+                                tx.Description = $"Paid ₹{req.PaidAmount:N2} for Purchase {purchase.PurchaseNumber}";
+                                _db.AccountTransactions.Update(tx);
+                            }
+                            else
+                            {
+                                _db.AccountTransactions.RemoveRange(existingTxs);
+                                await _accountRepo.AddTransactionAsync(new AccountTransaction
+                                {
+                                    AccountId = targetAcc.AccountId,
+                                    TransactionType = "DEBIT",
+                                    Amount = req.PaidAmount,
+                                    ReferenceType = "PURCHASE",
+                                    ReferenceId = purchase.PurchaseId.ToString(),
+                                    Description = $"Paid ₹{req.PaidAmount:N2} for Purchase {purchase.PurchaseNumber}",
+                                    CreatedBy = username,
+                                    CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
+                                });
+                            }
+                        }
+                    }
+                    else if (req.PaidAmount == 0 && existingTxs.Any())
+                    {
+                        _db.AccountTransactions.RemoveRange(existingTxs);
+                    }
 
                     await _db.SaveChangesAsync();
                     await transaction.CommitAsync();

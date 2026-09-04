@@ -33,25 +33,45 @@ namespace VinayagaPlates.Api.Controllers
         public async Task<IActionResult> GetAll()
         {
             var data = await _purchaseRepo.GetPurchasesWithDetailsAsync();
-            var resp = data.Select(p => new {
-                p.PurchaseId,
-                p.PurchaseNumber,
-                p.SupplierId,
-                SupplierName = p.Supplier?.SupplierName ?? "Unknown",
-                p.PurchaseDate,
-                p.TotalAmount,
-                p.PaidAmount,
-                BalanceAmount = p.TotalAmount - p.PaidAmount,
-                p.PaymentStatus,
-                p.Status,
-                Details = p.Details.Select(d => new {
-                    d.PurchaseDetailId,
-                    d.ProductId,
-                    d.BatchId,
-                    d.Quantity,
-                    d.UnitCost
-                }).ToList()
+            var purchaseIds = data.Select(p => p.PurchaseId.ToString()).ToHashSet();
+            var purchaseNumbers = data.Where(p => !string.IsNullOrEmpty(p.PurchaseNumber)).Select(p => p.PurchaseNumber).ToHashSet();
+
+            var linkedTxs = await _db.AccountTransactions
+                .Include(t => t.Account)
+                .Where(t => t.ReferenceType == "PURCHASE" && (purchaseIds.Contains(t.ReferenceId) || purchaseNumbers.Contains(t.ReferenceId)))
+                .ToListAsync();
+
+            var txLookup = linkedTxs.ToLookup(t => t.ReferenceId);
+
+            var resp = data.Select(p => {
+                var tx = txLookup[p.PurchaseId.ToString()].FirstOrDefault() ?? txLookup[p.PurchaseNumber].FirstOrDefault();
+                var accName = tx?.Account?.AccountName ?? "";
+                var accId = tx?.AccountId ?? 0;
+
+                return new {
+                    p.PurchaseId,
+                    p.PurchaseNumber,
+                    p.SupplierId,
+                    SupplierName = p.Supplier?.SupplierName ?? "Unknown",
+                    p.PurchaseDate,
+                    p.TotalAmount,
+                    p.PaidAmount,
+                    BalanceAmount = p.TotalAmount - p.PaidAmount,
+                    p.PaymentStatus,
+                    p.Status,
+                    AccountId = accId,
+                    AccountName = accName,
+                    PaymentMethodAccountName = accName,
+                    Details = p.Details.Select(d => new {
+                        d.PurchaseDetailId,
+                        d.ProductId,
+                        d.BatchId,
+                        d.Quantity,
+                        d.UnitCost
+                    }).ToList()
+                };
             }).ToList();
+
             var response = ApiResponse<object>.Success(resp, "Purchases retrieved successfully.");
             return StatusCode(response.StatusCode, response);
         }

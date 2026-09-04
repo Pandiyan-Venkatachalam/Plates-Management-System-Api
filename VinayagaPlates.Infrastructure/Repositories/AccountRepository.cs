@@ -63,6 +63,50 @@ namespace VinayagaPlates.Infrastructure.Repositories
             {
                 Db.AccountTransactions.RemoveRange(orphanedTx);
                 await Db.SaveChangesAsync();
+                allTx = await Db.AccountTransactions.ToListAsync();
+            }
+
+            // 3. Backfill any unlinked PartnerLedger entries
+            var existingPartnerTxs = allTx.Where(t => t.ReferenceType == "PARTNER_TRANSACTION").ToList();
+            var allLedgers = await Db.PartnerLedgers.Include(l => l.Partner).ToListAsync();
+            var businessAccounts = await Db.BusinessAccounts.ToListAsync();
+            var defaultAccount = businessAccounts.FirstOrDefault();
+
+            var newPartnerTxs = new List<AccountTransaction>();
+            foreach (var pl in allLedgers)
+            {
+                var refId = $"LEDGER-{pl.LedgerId}";
+                var hasTx = existingPartnerTxs.Any(t => t.ReferenceId == refId || (t.Amount == pl.Amount && t.Description != null && !string.IsNullOrEmpty(pl.Description) && t.Description.Contains(pl.Description)));
+                if (!hasTx)
+                {
+                    var pName = pl.Partner?.PartnerName?.Trim().ToLower() ?? "";
+                    var matchedAcc = businessAccounts.FirstOrDefault(a => 
+                        (!string.IsNullOrEmpty(pName) && (a.AccountName.ToLower().Contains(pName) || pName.Contains(a.AccountName.ToLower()))) ||
+                        (!string.IsNullOrEmpty(a.AccountType) && (a.AccountType.ToLower().Contains(pName) || pName.Contains(a.AccountType.ToLower())))
+                    ) ?? defaultAccount;
+
+                    if (matchedAcc != null)
+                    {
+                        var newTx = new AccountTransaction
+                        {
+                            AccountId = matchedAcc.AccountId,
+                            TransactionType = pl.TransactionType == "INVESTMENT" ? "CREDIT" : "DEBIT",
+                            Amount = pl.Amount,
+                            ReferenceType = "PARTNER_TRANSACTION",
+                            ReferenceId = refId,
+                            Description = $"{pl.TransactionType} by Partner. Details: {pl.Description}",
+                            CreatedBy = pl.CreatedBy ?? "SYSTEM",
+                            CreatedAt = pl.CreatedAt
+                        };
+                        newPartnerTxs.Add(newTx);
+                    }
+                }
+            }
+
+            if (newPartnerTxs.Any())
+            {
+                await Db.AccountTransactions.AddRangeAsync(newPartnerTxs);
+                await Db.SaveChangesAsync();
             }
 
             return await Db.AccountTransactions
