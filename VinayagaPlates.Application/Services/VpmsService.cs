@@ -92,15 +92,20 @@ namespace VinayagaPlates.Application.Services
                 }
             }
 
-            // Seed default business accounts if they don't exist by name
-            if (!await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(_db.BusinessAccounts, a => a.AccountName.ToLower() == "cash"))
+            // Seed default business accounts only if table is completely empty
+            if (!await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(_db.BusinessAccounts))
             {
-                await _db.BusinessAccounts.AddAsync(new BusinessAccount { AccountName = "Cash", AccountType = "CASH", CreatedBy = "SYSTEM", CreatedAt = DateTime.UtcNow });
+                await _db.BusinessAccounts.AddAsync(new BusinessAccount { AccountName = "Ranjith", AccountType = "Ranjith's Acc", CreatedBy = "SYSTEM", CreatedAt = DateTime.UtcNow });
+                await _db.BusinessAccounts.AddAsync(new BusinessAccount { AccountName = "Pandiyan", AccountType = "Pandiyan's Acc", CreatedBy = "SYSTEM", CreatedAt = DateTime.UtcNow });
                 await _db.SaveChangesAsync();
             }
-            if (!await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(_db.BusinessAccounts, a => a.AccountName.ToLower() == "bank"))
+
+            // Cleanup any auto-created Cash/Bank duplicate accounts
+            var existingAccounts = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(_db.BusinessAccounts);
+            var unwantedAccounts = existingAccounts.Where(a => (a.AccountName == "Cash" || a.AccountName == "Bank") && a.AccountId > 2).ToList();
+            if (unwantedAccounts.Any())
             {
-                await _db.BusinessAccounts.AddAsync(new BusinessAccount { AccountName = "Bank", AccountType = "BANK", CreatedBy = "SYSTEM", CreatedAt = DateTime.UtcNow });
+                _db.BusinessAccounts.RemoveRange(unwantedAccounts);
                 await _db.SaveChangesAsync();
             }
 

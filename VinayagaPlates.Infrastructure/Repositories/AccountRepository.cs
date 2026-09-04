@@ -77,11 +77,14 @@ namespace VinayagaPlates.Infrastructure.Repositories
         {
             if (string.IsNullOrWhiteSpace(name)) return null;
             var trimmed = name.Trim().ToLower();
+            var cleanId = trimmed.Replace("acct-", "").Replace("acct", "").Trim();
             var all = await Db.BusinessAccounts.ToListAsync();
-            return all.FirstOrDefault(a => a.AccountName.Trim().ToLower() == trimmed)
+
+            return all.FirstOrDefault(a => a.AccountId.ToString() == cleanId)
+                ?? all.FirstOrDefault(a => a.AccountName.Trim().ToLower() == trimmed)
+                ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && a.AccountType.Trim().ToLower() == trimmed)
                 ?? all.FirstOrDefault(a => a.AccountName.ToLower().Contains(trimmed) || trimmed.Contains(a.AccountName.ToLower()))
-                ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && a.AccountType.ToLower() == trimmed)
-                ?? all.FirstOrDefault(a => a.AccountId.ToString() == trimmed);
+                ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && (a.AccountType.ToLower().Contains(trimmed) || trimmed.Contains(a.AccountType.ToLower())));
         }
 
         public async Task AddAuditLogAsync(AuditLog log) =>
