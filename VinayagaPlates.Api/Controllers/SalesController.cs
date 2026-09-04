@@ -33,24 +33,43 @@ namespace VinayagaPlates.Api.Controllers
         public async Task<IActionResult> GetAll()
         {
             var data = await _salesRepo.GetSalesWithDetailsAsync();
-            var resp = data.Select(s => new {
-                s.SaleId,
-                s.SaleNumber,
-                s.CustomerId,
-                CustomerName = s.Customer?.CustomerName ?? "Unknown",
-                s.SaleDate,
-                s.TotalAmount,
-                s.PaidAmount,
-                BalanceAmount = s.TotalAmount - s.PaidAmount,
-                s.PaymentStatus,
-                s.Status,
-                Details = s.Details.Select(d => new {
-                    d.SaleDetailId,
-                    d.ProductId,
-                    d.BatchId,
-                    d.Quantity,
-                    d.UnitPrice
-                }).ToList()
+            var saleIds = data.Select(s => s.SaleId.ToString()).ToHashSet();
+            var saleNumbers = data.Where(s => !string.IsNullOrEmpty(s.SaleNumber)).Select(s => s.SaleNumber).ToHashSet();
+
+            var linkedTxs = await _db.AccountTransactions
+                .Include(t => t.Account)
+                .Where(t => t.ReferenceType == "SALE" && (saleIds.Contains(t.ReferenceId) || saleNumbers.Contains(t.ReferenceId)))
+                .ToListAsync();
+
+            var txLookup = linkedTxs.ToLookup(t => t.ReferenceId);
+
+            var resp = data.Select(s => {
+                var tx = txLookup[s.SaleId.ToString()].FirstOrDefault() ?? txLookup[s.SaleNumber].FirstOrDefault();
+                var accName = tx?.Account?.AccountName ?? "";
+                var accId = tx?.AccountId ?? 0;
+
+                return new {
+                    s.SaleId,
+                    s.SaleNumber,
+                    s.CustomerId,
+                    CustomerName = s.Customer?.CustomerName ?? "Unknown",
+                    s.SaleDate,
+                    s.TotalAmount,
+                    s.PaidAmount,
+                    BalanceAmount = s.TotalAmount - s.PaidAmount,
+                    s.PaymentStatus,
+                    s.Status,
+                    AccountId = accId,
+                    AccountName = accName,
+                    PaymentMethodAccountName = accName,
+                    Details = s.Details.Select(d => new {
+                        d.SaleDetailId,
+                        d.ProductId,
+                        d.BatchId,
+                        d.Quantity,
+                        d.UnitPrice
+                    }).ToList()
+                };
             }).ToList();
             var response = ApiResponse<object>.Success(resp, "Sales retrieved successfully.");
             return StatusCode(response.StatusCode, response);

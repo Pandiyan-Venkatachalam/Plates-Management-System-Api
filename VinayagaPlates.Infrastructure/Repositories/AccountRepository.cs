@@ -65,39 +65,6 @@ namespace VinayagaPlates.Infrastructure.Repositories
                 await Db.SaveChangesAsync();
             }
 
-            // 3. Sync missing active sales & purchases to AccountTransactions if needed
-            if (defaultAcc != null)
-            {
-                var currentSaleRefs = await Db.AccountTransactions
-                    .Where(t => t.ReferenceType == "SALE")
-                    .Select(t => t.ReferenceId)
-                    .ToListAsync();
-
-                var salesToAdd = validSales
-                    .Where(s => s.PaidAmount > 0 && !currentSaleRefs.Contains(s.SaleId.ToString()) && !currentSaleRefs.Contains(s.SaleNumber))
-                    .ToList();
-
-                if (salesToAdd.Any())
-                {
-                    foreach (var s in salesToAdd)
-                    {
-                        Db.AccountTransactions.Add(new AccountTransaction
-                        {
-                            AccountId = defaultAcc.AccountId,
-                            TransactionType = "CREDIT",
-                            Amount = s.PaidAmount,
-                            ReferenceType = "SALE",
-                            ReferenceId = s.SaleId.ToString(),
-                            Description = $"Collected payment for Sale {s.SaleNumber}",
-                            CreatedBy = s.CreatedBy ?? "SYSTEM",
-                            CreatedAt = s.SaleDate != default ? s.SaleDate : s.CreatedAt
-                        });
-                    }
-                    await Db.SaveChangesAsync();
-                }
-
-            }
-
             return await Db.AccountTransactions
                 .Include(t => t.Account)
                 .ToListAsync();
@@ -108,8 +75,13 @@ namespace VinayagaPlates.Infrastructure.Repositories
 
         public async Task<BusinessAccount> GetByNameAsync(string name)
         {
-            return await Db.BusinessAccounts
-                .FirstOrDefaultAsync(a => a.AccountName.ToLower() == name.ToLower());
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            var trimmed = name.Trim().ToLower();
+            var all = await Db.BusinessAccounts.ToListAsync();
+            return all.FirstOrDefault(a => a.AccountName.Trim().ToLower() == trimmed)
+                ?? all.FirstOrDefault(a => a.AccountName.ToLower().Contains(trimmed) || trimmed.Contains(a.AccountName.ToLower()))
+                ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && a.AccountType.ToLower() == trimmed)
+                ?? all.FirstOrDefault(a => a.AccountId.ToString() == trimmed);
         }
 
         public async Task AddAuditLogAsync(AuditLog log) =>

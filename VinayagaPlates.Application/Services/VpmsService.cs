@@ -801,6 +801,47 @@ namespace VinayagaPlates.Application.Services
                     sale.UpdatedBy = username;
                     sale.UpdatedAt = DateTime.UtcNow;
 
+                    // 5. Synchronize linked AccountTransaction
+                    var linkedTx = await _db.AccountTransactions
+                        .FirstOrDefaultAsync(t => t.ReferenceType == "SALE" && (t.ReferenceId == id.ToString() || t.ReferenceId == sale.SaleNumber));
+
+                    var targetAcc = !string.IsNullOrWhiteSpace(req.PaymentMethodAccountName)
+                        ? await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName)
+                        : null;
+
+                    if (req.PaidAmount > 0)
+                    {
+                        if (linkedTx != null)
+                        {
+                            linkedTx.Amount = req.PaidAmount;
+                            if (targetAcc != null)
+                            {
+                                linkedTx.AccountId = targetAcc.AccountId;
+                            }
+                            linkedTx.CreatedAt = req.SaleDate != default ? req.SaleDate : DateTime.UtcNow;
+                            linkedTx.Description = $"Collected payment for Sale {sale.SaleNumber}";
+                            _db.AccountTransactions.Update(linkedTx);
+                        }
+                        else if (targetAcc != null)
+                        {
+                            await _accountRepo.AddTransactionAsync(new AccountTransaction
+                            {
+                                AccountId = targetAcc.AccountId,
+                                TransactionType = "CREDIT",
+                                Amount = req.PaidAmount,
+                                ReferenceType = "SALE",
+                                ReferenceId = sale.SaleId.ToString(),
+                                Description = $"Collected payment for Sale {sale.SaleNumber}",
+                                CreatedBy = username,
+                                CreatedAt = req.SaleDate != default ? req.SaleDate : DateTime.UtcNow
+                            });
+                        }
+                    }
+                    else if (linkedTx != null)
+                    {
+                        _db.AccountTransactions.Remove(linkedTx);
+                    }
+
                     await _db.SaveChangesAsync();
                     await transaction.CommitAsync();
 

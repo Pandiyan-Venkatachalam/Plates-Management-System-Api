@@ -21,5 +21,6 @@ namespace VinayagaPlates.Contracts.DTOs
         decimal PaidAmount,
         string PaymentStatus,
         string Status,
-        decimal Adjustment = 0);
+        decimal Adjustment = 0,
+        string? PaymentMethodAccountName = null);
 }
