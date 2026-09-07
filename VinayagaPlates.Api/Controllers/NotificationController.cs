@@ -94,16 +94,22 @@ namespace VinayagaPlates.Api.Controllers
             {
                 var currentUsername = User?.FindFirst(ClaimTypes.Name)?.Value 
                     ?? User?.FindFirst(ClaimTypes.NameIdentifier)?.Value 
-                    ?? activity.PerformedBy 
+                    ?? activity?.PerformedBy 
                     ?? "Admin";
+
+                var category = string.IsNullOrWhiteSpace(activity?.Category) ? "GENERAL" : activity.Category;
+                var actionType = string.IsNullOrWhiteSpace(activity?.ActionType) ? "UPDATE" : activity.ActionType;
+                var refId = activity?.ReferenceId ?? "";
+                var message = activity?.Message ?? "";
 
                 var audit = new AuditLog
                 {
                     Username = currentUsername,
-                    ActionName = $"{activity.Category}_{activity.ActionType}",
-                    TableName = activity.Category,
-                    RecordId = activity.ReferenceId,
-                    NewValues = activity.Message,
+                    ActionName = $"{category}_{actionType}",
+                    TableName = category,
+                    RecordId = refId,
+                    OldValues = string.Empty,
+                    NewValues = message,
                     Timestamp = DateTime.UtcNow
                 };
 

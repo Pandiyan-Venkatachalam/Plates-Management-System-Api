@@ -118,7 +118,8 @@ namespace VinayagaPlates.Application.Services
                     ActionName = $"WHATSAPP_ALERT_{eventType.ToUpper()}",
                     TableName = "Partners",
                     RecordId = string.Join(",", partners.Select(p => p.PartnerId)),
-                    NewValues = message,
+                    OldValues = string.Empty,
+                    NewValues = message ?? string.Empty,
                     Timestamp = DateTime.UtcNow
                 });
                 await _db.SaveChangesAsync();
