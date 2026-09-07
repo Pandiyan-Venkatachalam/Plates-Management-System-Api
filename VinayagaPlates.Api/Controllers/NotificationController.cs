@@ -28,11 +28,12 @@ namespace VinayagaPlates.Api.Controllers
         }
 
         [HttpGet("recent")]
-        public async Task<IActionResult> GetRecentNotifications([FromQuery] int limit = 30)
+        public async Task<IActionResult> GetRecentNotifications([FromQuery] int limit = 50)
         {
             try
             {
                 var auditLogs = await _db.AuditLogs
+                    .Where(a => !a.ActionName.StartsWith("WHATSAPP_ALERT") && !a.ActionName.StartsWith("WHATSAPP_BROADCAST") && a.TableName != "Partners")
                     .OrderByDescending(a => a.Timestamp)
                     .Take(limit)
                     .ToListAsync();
@@ -102,6 +103,20 @@ namespace VinayagaPlates.Api.Controllers
                 var refId = activity?.ReferenceId ?? "";
                 var message = activity?.Message ?? "";
 
+                // Check for duplicate recent activity within 30 seconds
+                var recentCutoff = DateTime.UtcNow.AddSeconds(-30);
+                var isDuplicate = await _db.AuditLogs.AnyAsync(a => 
+                    a.TableName == category && 
+                    a.RecordId == refId && 
+                    a.ActionName == $"{category}_{actionType}" && 
+                    a.Timestamp >= recentCutoff);
+
+                if (isDuplicate)
+                {
+                    var dupResp = ApiResponse<object>.Success(new { auditId = 0 }, "Activity already recorded recently.");
+                    return StatusCode(dupResp.StatusCode, dupResp);
+                }
+
                 var audit = new AuditLog
                 {
                     Username = currentUsername,
@@ -138,6 +153,7 @@ namespace VinayagaPlates.Api.Controllers
             else if (tableUpper.Contains("PURCHASE") || actionUpper.Contains("PURCHASE")) category = "PURCHASE";
             else if (tableUpper.Contains("BATCH") || tableUpper.Contains("STOCK") || tableUpper.Contains("INVENTORY") || actionUpper.Contains("BATCH") || actionUpper.Contains("STOCK")) category = "STOCK";
             else if (tableUpper.Contains("PRODUCT") || actionUpper.Contains("PRODUCT")) category = "PRODUCT";
+            else if (tableUpper.Contains("ORDER") || actionUpper.Contains("ORDER")) category = "ORDERS";
             else if (tableUpper.Contains("PARTNER") || actionUpper.Contains("PARTNER")) category = "PARTNER";
             else if (tableUpper.Contains("EXPENSE") || tableUpper.Contains("ACCOUNT") || actionUpper.Contains("EXPENSE")) category = "EXPENSE";
             else if (tableUpper.Contains("CUSTOMER") || actionUpper.Contains("CUSTOMER")) category = "CUSTOMER";
@@ -158,6 +174,8 @@ namespace VinayagaPlates.Api.Controllers
             else if (category == "STOCK" && actionType == "ADJUST") title = "Inventory Batch Adjusted";
             else if (category == "STOCK" && actionType == "CREATE") title = "New Stock Batch Received";
             else if (category == "PRODUCT" && actionType == "CREATE") title = "New Product Added to Catalog";
+            else if (category == "ORDERS" && actionType == "CREATE") title = "New Sales Order Created";
+            else if (category == "ORDERS" && actionType == "UPDATE") title = "Sales Order Updated";
             else if (category == "EXPENSE" && actionType == "CREATE") title = "New Expense Recorded";
             else if (category == "PARTNER") title = "Partner Ledger Entry Updated";
 

@@ -109,26 +109,6 @@ namespace VinayagaPlates.Application.Services
                 if (sent) successCount++;
             }
 
-            try
-            {
-                // Record in AuditLog
-                _db.AuditLogs.Add(new AuditLog
-                {
-                    Username = "SYSTEM",
-                    ActionName = $"WHATSAPP_ALERT_{eventType.ToUpper()}",
-                    TableName = "Partners",
-                    RecordId = string.Join(",", partners.Select(p => p.PartnerId)),
-                    OldValues = string.Empty,
-                    NewValues = message ?? string.Empty,
-                    Timestamp = DateTime.UtcNow
-                });
-                await _db.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error recording WhatsApp broadcast audit");
-            }
-
             return successCount;
         }
 
