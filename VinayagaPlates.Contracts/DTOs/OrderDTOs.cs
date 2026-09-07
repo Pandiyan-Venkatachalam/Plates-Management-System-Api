@@ -56,9 +56,16 @@ namespace VinayagaPlates.Contracts.DTOs
         DateTime? UpdatedAt,
         List<OrderDetailResponse> Details);
 
+    public record OrderConvertItemAllocation(
+        int ProductId,
+        int Quantity,
+        decimal UnitPrice,
+        int BatchId);
+
     public record OrderConvertToSaleRequest(
         int OrderId,
         decimal PaidAmount,
         string PaymentMethodAccountName,
-        string? Notes = null);
+        string? Notes = null,
+        List<OrderConvertItemAllocation>? ItemAllocations = null);
 }

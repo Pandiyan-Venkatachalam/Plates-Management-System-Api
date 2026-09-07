@@ -1177,27 +1177,49 @@ namespace VinayagaPlates.Application.Services
 
             var saleDetails = new List<SaleDetailRequest>();
 
-            foreach (var d in order.Details)
+            if (req.ItemAllocations != null && req.ItemAllocations.Count > 0)
             {
-                // Auto-allocate available batch with stock
-                var availableBatches = await _db.InventoryBatches
-                    .Where(b => b.ProductId == d.ProductId && b.CurrentQuantity > 0)
-                    .OrderBy(b => b.CreatedAt)
-                    .ToListAsync();
-
-                int remainingToFulfill = d.OrderedQuantity;
-                foreach (var b in availableBatches)
+                foreach (var alloc in req.ItemAllocations)
                 {
-                    if (remainingToFulfill <= 0) break;
-                    int take = Math.Min(remainingToFulfill, b.CurrentQuantity);
-                    saleDetails.Add(new SaleDetailRequest(d.ProductId, take, d.SellingPrice, b.BatchId));
-                    remainingToFulfill -= take;
+                    var batch = await _db.InventoryBatches.FirstOrDefaultAsync(b => b.BatchId == alloc.BatchId);
+                    if (batch == null)
+                    {
+                        throw new InvalidOperationException($"Selected stock batch #{alloc.BatchId} not found.");
+                    }
+
+                    if (batch.CurrentQuantity < alloc.Quantity)
+                    {
+                        var prod = await _productRepo.GetByIdAsync(alloc.ProductId);
+                        throw new InvalidOperationException($"Insufficient inventory stock in batch '{batch.BatchNumber}'. Required: {alloc.Quantity}, Available: {batch.CurrentQuantity} in this batch.");
+                    }
+
+                    saleDetails.Add(new SaleDetailRequest(alloc.ProductId, alloc.Quantity, alloc.UnitPrice, alloc.BatchId));
                 }
-
-                if (remainingToFulfill > 0)
+            }
+            else
+            {
+                foreach (var d in order.Details)
                 {
-                    var prod = await _productRepo.GetByIdAsync(d.ProductId);
-                    throw new InvalidOperationException($"Insufficient inventory stock for '{prod?.ProductName ?? $"Product #{d.ProductId}"}'. Required: {d.OrderedQuantity}, Available: {d.OrderedQuantity - remainingToFulfill}. Please add or manufacture stock batches first.");
+                    // Auto-allocate available batch with stock
+                    var availableBatches = await _db.InventoryBatches
+                        .Where(b => b.ProductId == d.ProductId && b.CurrentQuantity > 0)
+                        .OrderBy(b => b.CreatedAt)
+                        .ToListAsync();
+
+                    int remainingToFulfill = d.OrderedQuantity;
+                    foreach (var b in availableBatches)
+                    {
+                        if (remainingToFulfill <= 0) break;
+                        int take = Math.Min(remainingToFulfill, b.CurrentQuantity);
+                        saleDetails.Add(new SaleDetailRequest(d.ProductId, take, d.SellingPrice, b.BatchId));
+                        remainingToFulfill -= take;
+                    }
+
+                    if (remainingToFulfill > 0)
+                    {
+                        var prod = await _productRepo.GetByIdAsync(d.ProductId);
+                        throw new InvalidOperationException($"Insufficient inventory stock for '{prod?.ProductName ?? $"Product #{d.ProductId}"}'. Required: {d.OrderedQuantity}, Available: {d.OrderedQuantity - remainingToFulfill}. Please add or manufacture stock batches first.");
+                    }
                 }
             }
 
