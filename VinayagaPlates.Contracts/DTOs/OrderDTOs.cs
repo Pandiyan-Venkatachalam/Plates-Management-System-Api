@@ -67,5 +67,7 @@ namespace VinayagaPlates.Contracts.DTOs
         decimal PaidAmount,
         string PaymentMethodAccountName,
         string? Notes = null,
-        List<OrderConvertItemAllocation>? ItemAllocations = null);
+        List<OrderConvertItemAllocation>? ItemAllocations = null,
+        decimal Adjustment = 0,
+        int? CustomerId = null);
 }

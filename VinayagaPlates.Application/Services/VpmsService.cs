@@ -1179,20 +1179,25 @@ namespace VinayagaPlates.Application.Services
 
             if (req.ItemAllocations != null && req.ItemAllocations.Count > 0)
             {
-                foreach (var alloc in req.ItemAllocations)
+                var allocationsByBatch = req.ItemAllocations.GroupBy(a => a.BatchId);
+                foreach (var grp in allocationsByBatch)
                 {
-                    var batch = await _db.InventoryBatches.FirstOrDefaultAsync(b => b.BatchId == alloc.BatchId);
+                    var batch = await _db.InventoryBatches.FirstOrDefaultAsync(b => b.BatchId == grp.Key);
                     if (batch == null)
                     {
-                        throw new InvalidOperationException($"Selected stock batch #{alloc.BatchId} not found.");
+                        throw new InvalidOperationException($"Selected stock batch #{grp.Key} not found.");
                     }
 
-                    if (batch.CurrentQuantity < alloc.Quantity)
+                    var totalBatchQty = grp.Sum(x => x.Quantity);
+                    if (batch.CurrentQuantity < totalBatchQty)
                     {
-                        var prod = await _productRepo.GetByIdAsync(alloc.ProductId);
-                        throw new InvalidOperationException($"Insufficient inventory stock in batch '{batch.BatchNumber}'. Required: {alloc.Quantity}, Available: {batch.CurrentQuantity} in this batch.");
+                        var prod = await _productRepo.GetByIdAsync(batch.ProductId);
+                        throw new InvalidOperationException($"Insufficient inventory stock in batch '{batch.BatchNumber}'. Total Required: {totalBatchQty}, Available: {batch.CurrentQuantity} in this batch.");
                     }
+                }
 
+                foreach (var alloc in req.ItemAllocations)
+                {
                     saleDetails.Add(new SaleDetailRequest(alloc.ProductId, alloc.Quantity, alloc.UnitPrice, alloc.BatchId));
                 }
             }
@@ -1200,7 +1205,7 @@ namespace VinayagaPlates.Application.Services
             {
                 foreach (var d in order.Details)
                 {
-                    // Auto-allocate available batch with stock
+                    // If no explicit allocations sent, allocate from available batches
                     var availableBatches = await _db.InventoryBatches
                         .Where(b => b.ProductId == d.ProductId && b.CurrentQuantity > 0)
                         .OrderBy(b => b.CreatedAt)
@@ -1223,13 +1228,15 @@ namespace VinayagaPlates.Application.Services
                 }
             }
 
+            var customerId = req.CustomerId.HasValue && req.CustomerId.Value > 0 ? req.CustomerId.Value : order.CustomerId;
+
             var saleReq = new SaleCreateRequest(
-                order.CustomerId,
+                customerId,
                 DateTime.UtcNow,
                 saleDetails,
                 req.PaidAmount,
                 req.PaymentMethodAccountName,
-                0
+                req.Adjustment
             );
 
             var sale = await CreateSaleAsync(saleReq, username);
