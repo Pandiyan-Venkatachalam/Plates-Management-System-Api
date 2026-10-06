@@ -111,18 +111,10 @@ builder.Services.AddAuthorization(options => {
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", p => p.WithOrigins(
-        "https://vinayaga-plates-management.web.app",
-        "https://vinayaga-plates-management.firebaseapp.com",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost",
-        "capacitor://localhost",
-        "http://148.230.67.168:8080",
-        "http://vinayagaplates:8080"
-    )
-    .AllowAnyMethod()
-    .AllowAnyHeader());
+    options.AddPolicy("AllowAll", p => p
+        .AllowAnyOrigin()
+        .AllowAnyMethod()
+        .AllowAnyHeader());
 });
 
 var app = builder.Build();
