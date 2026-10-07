@@ -32,53 +32,70 @@ namespace VinayagaPlates.Api.Filters
             // Only care if the status is successful (2xx)
             if (context.HttpContext.Response.StatusCode >= 200 && context.HttpContext.Response.StatusCode < 300)
             {
+                var userName = context.HttpContext.User.Identity?.Name ?? "SYSTEM";
+                var path = request.Path.Value;
+                var moduleName = GetModuleName(path);
+                
+                var action = method == "POST" ? "Created" : method == "PUT" ? "Updated" : "Deleted";
+                var color = method == "POST" ? "🟢" : method == "PUT" ? "🔵" : "🔴";
+                var subject = $"{color} [VPMS] {moduleName} {action}";
+
+                string detailsHtml = "No additional details available.";
+                
+                if (executedContext.Result is ObjectResult objectResult && objectResult.Value != null)
+                {
+                    var responseValue = objectResult.Value;
+                    var dataType = responseValue.GetType();
+                    var dataProp = dataType.GetProperty("Data");
+                    if (dataProp != null)
+                    {
+                        var dataObj = dataProp.GetValue(responseValue);
+                        if (dataObj != null)
+                        {
+                            detailsHtml = GenerateHtmlFromObject(dataObj);
+                        }
+                        else
+                        {
+                            var msgProp = dataType.GetProperty("Message");
+                            var msgObj = msgProp?.GetValue(responseValue);
+                            if (msgObj != null) detailsHtml = $"<ul><li><b>Message:</b> {msgObj}</li></ul>";
+                        }
+                    }
+                }
+
                 // Process email in the background so it doesn't delay the API response
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        // Create a new scope for background task
                         using var scope = context.HttpContext.RequestServices.CreateScope();
                         var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
                         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-                        var logger = scope.ServiceProvider.GetRequiredService<ILogger<EmailNotificationFilter>>();
-
-                        var recipientEmails = config["EmailSettings:RecipientEmails"];
-                        if (string.IsNullOrEmpty(recipientEmails)) return;
-
-                        var userName = context.HttpContext.User.Identity?.Name ?? "SYSTEM";
-                        var path = request.Path.Value;
-                        var moduleName = GetModuleName(path);
                         
-                        var action = method == "POST" ? "Created" : method == "PUT" ? "Updated" : "Deleted";
-                        var color = method == "POST" ? "🟢" : method == "PUT" ? "🔵" : "🔴";
+                        string senderEmail = "";
+                        string senderPass = "";
+                        string recipientEmails = "";
 
-                        var subject = $"{color} [VPMS] {moduleName} {action}";
-                        
-                        // Try to extract object details from the ObjectResult
-                        string detailsHtml = "No additional details available.";
-                        
-                        if (executedContext.Result is ObjectResult objectResult && objectResult.Value != null)
+                        if (userName.Equals("Pandiyan", StringComparison.OrdinalIgnoreCase))
                         {
-                            var responseValue = objectResult.Value;
-                            // Check if it's our ApiResponse<T>
-                            var dataType = responseValue.GetType();
-                            var dataProp = dataType.GetProperty("Data");
-                            if (dataProp != null)
-                            {
-                                var dataObj = dataProp.GetValue(responseValue);
-                                if (dataObj != null)
-                                {
-                                    detailsHtml = GenerateHtmlFromObject(dataObj);
-                                }
-                                else
-                                {
-                                    var msgProp = dataType.GetProperty("Message");
-                                    var msgObj = msgProp?.GetValue(responseValue);
-                                    if (msgObj != null) detailsHtml = $"<ul><li><b>Message:</b> {msgObj}</li></ul>";
-                                }
-                            }
+                            senderEmail = config["EmailSettings:Users:Pandiyan:Email"];
+                            senderPass = config["EmailSettings:Users:Pandiyan:AppPassword"];
+                            recipientEmails = config["EmailSettings:Users:Ranjith:Email"];
                         }
+                        else if (userName.Equals("Ranjith", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderEmail = config["EmailSettings:Users:Ranjith:Email"];
+                            senderPass = config["EmailSettings:Users:Ranjith:AppPassword"];
+                            recipientEmails = config["EmailSettings:Users:Pandiyan:Email"];
+                        }
+                        else 
+                        {
+                            senderEmail = config["EmailSettings:Users:Pandiyan:Email"];
+                            senderPass = config["EmailSettings:Users:Pandiyan:AppPassword"];
+                            recipientEmails = $"{config["EmailSettings:Users:Pandiyan:Email"]},{config["EmailSettings:Users:Ranjith:Email"]}";
+                        }
+
+                        if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(recipientEmails)) return;
 
                         string htmlBody = $@"
                         <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
@@ -102,7 +119,7 @@ namespace VinayagaPlates.Api.Filters
                             </p>
                         </div>";
 
-                        await emailService.SendEmailAsync(recipientEmails, subject, htmlBody);
+                        await emailService.SendEmailAsync(senderEmail, senderPass, recipientEmails, subject, htmlBody);
                     }
                     catch (Exception ex)
                     {
