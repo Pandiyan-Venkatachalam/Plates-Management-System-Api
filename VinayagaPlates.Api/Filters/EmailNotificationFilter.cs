@@ -328,8 +328,7 @@ namespace VinayagaPlates.Api.Filters
                     <li style='padding: 4px 0;'><b>Amount Paid:</b> ₹{sale.PaidAmount:N2}</li>
                     <li style='padding: 4px 0;'><b>Balance Due:</b> ₹{(sale.TotalAmount - sale.PaidAmount):N2}</li>
                     <li style='padding: 4px 0;'><b>Payment Status:</b> {(sale.PaymentStatus == "PARTIALLY_PAID" ? "⚠️ PARTIALLY PAID" : sale.PaymentStatus)}</li>
-                    <li style='padding: 4px 0;'><b>Collected By:</b> {sale.CreatedBy}</li>
-                    {(actionDescription.Contains("updat", StringComparison.OrdinalIgnoreCase) || actionDescription.Contains("adjust", StringComparison.OrdinalIgnoreCase) ? $"<li style='padding: 4px 0;'><b>Adjusted By:</b> {userName}</li>" : "")}
+                    <li style='padding: 4px 0;'><b>Collected By:</b> {userName}</li>
                 </ul>
 
                 <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
@@ -493,8 +492,7 @@ namespace VinayagaPlates.Api.Filters
                     <li style='padding: 4px 0;'><b>Amount Paid:</b> ₹{purchase.PaidAmount:N2}</li>
                     <li style='padding: 4px 0;'><b>Balance Due:</b> ₹{(purchase.TotalAmount - purchase.PaidAmount):N2}</li>
                     <li style='padding: 4px 0;'><b>Payment Status:</b> {(purchase.PaymentStatus == "PARTIALLY_PAID" ? "⚠️ PARTIALLY PAID" : purchase.PaymentStatus)}</li>
-                    <li style='padding: 4px 0;'><b>Debited By:</b> {purchase.CreatedBy}</li>
-                    {(actionDescription.Contains("updat", StringComparison.OrdinalIgnoreCase) || actionDescription.Contains("adjust", StringComparison.OrdinalIgnoreCase) ? $"<li style='padding: 4px 0;'><b>Adjusted By:</b> {userName}</li>" : "")}
+                    <li style='padding: 4px 0;'><b>Debited By:</b> {userName}</li>
                 </ul>
 
                 <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
