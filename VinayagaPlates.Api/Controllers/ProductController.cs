@@ -102,7 +102,21 @@ namespace VinayagaPlates.Api.Controllers
                 };
 
                 var created = await _vpms.CreateProductAsync(prod, user);
-                var response = ApiResponse<Product>.Success(created, "Product created successfully.", 201);
+                
+                var fullList = await _productRepo.GetProductsWithDetailsAsync();
+                var fullProd = fullList.FirstOrDefault(p => p.ProductId == created.ProductId);
+
+                var details = new {
+                    ProductId = fullProd?.ProductId ?? created.ProductId,
+                    ProductCode = fullProd?.ProductCode ?? created.ProductCode,
+                    ProductName = fullProd?.ProductName ?? created.ProductName,
+                    Category = fullProd?.Category?.CategoryName ?? $"Category ID {created.CategoryId}",
+                    Variant = fullProd?.Variant?.VariantName ?? $"Variant ID {created.VariantId}",
+                    Unit = fullProd?.Unit?.UnitName ?? $"Unit ID {created.UnitId}",
+                    MinStockAlert = fullProd?.MinStockAlert ?? created.MinStockAlert
+                };
+
+                var response = ApiResponse<object>.Success(details, "Product created successfully.", 201);
                 return StatusCode(response.StatusCode, response);
             }
             catch (Exception ex)
@@ -143,7 +157,20 @@ namespace VinayagaPlates.Api.Controllers
                 var newValues = $"Name: {prod.ProductName}, CatId: {prod.CategoryId}, VarId: {prod.VariantId}, UnitId: {prod.UnitId}, Alert: {prod.MinStockAlert}";
                 await _vpms.LogAuditAsync(user, "UPDATE_PRODUCT", "TB_PRODUCT", prod.ProductId.ToString(), oldValues, newValues);
 
-                var response = ApiResponse<Product>.Success(prod, "Product updated successfully.");
+                var fullList = await _productRepo.GetProductsWithDetailsAsync();
+                var fullProd = fullList.FirstOrDefault(p => p.ProductId == prod.ProductId);
+
+                var details = new {
+                    ProductId = fullProd?.ProductId ?? prod.ProductId,
+                    ProductCode = fullProd?.ProductCode ?? prod.ProductCode,
+                    ProductName = fullProd?.ProductName ?? prod.ProductName,
+                    Category = fullProd?.Category?.CategoryName ?? $"Category ID {prod.CategoryId}",
+                    Variant = fullProd?.Variant?.VariantName ?? $"Variant ID {prod.VariantId}",
+                    Unit = fullProd?.Unit?.UnitName ?? $"Unit ID {prod.UnitId}",
+                    MinStockAlert = fullProd?.MinStockAlert ?? prod.MinStockAlert
+                };
+
+                var response = ApiResponse<object>.Success(details, "Product updated successfully.");
                 return StatusCode(response.StatusCode, response);
             }
             catch (Exception ex)
@@ -177,7 +204,17 @@ namespace VinayagaPlates.Api.Controllers
 
                 await _vpms.LogAuditAsync(user, "DELETE_PRODUCT", "TB_PRODUCT", prod.ProductId.ToString(), prod.ProductName, "DELETED");
 
-                var response = ApiResponse<object>.Success(null, "Product deleted successfully.");
+                var details = new {
+                    ProductId = prod.ProductId,
+                    ProductCode = prod.ProductCode,
+                    ProductName = prod.ProductName,
+                    Category = prod.Category?.CategoryName ?? $"Category ID {prod.CategoryId}",
+                    Variant = prod.Variant?.VariantName ?? $"Variant ID {prod.VariantId}",
+                    Unit = prod.Unit?.UnitName ?? $"Unit ID {prod.UnitId}",
+                    Status = "DELETED"
+                };
+
+                var response = ApiResponse<object>.Success(details, "Product deleted successfully.");
                 return StatusCode(response.StatusCode, response);
             }
             catch (Exception ex)
