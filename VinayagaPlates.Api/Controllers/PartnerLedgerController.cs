@@ -191,6 +191,9 @@ namespace VinayagaPlates.Api.Controllers
             if (ledger == null)
                 return StatusCode(404, ApiResponse<string>.Fail("Ledger entry not found.", 404));
 
+            var allLedgers = await _ledgerRepo.GetTransactionsWithDetailsAsync();
+            var ledgerDetails = allLedgers.FirstOrDefault(l => l.LedgerId == id);
+
             // Clean up corresponding AccountTransaction if any
             var allTxs = await _db.AccountTransactions.ToListAsync();
             var matchedTx = allTxs.FirstOrDefault(t => 
@@ -205,7 +208,7 @@ namespace VinayagaPlates.Api.Controllers
             await _ledgerRepo.SaveChangesAsync();
             await _db.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(ledger, "Ledger entry deleted successfully.");
+            var response = ApiResponse<object>.Success(ledgerDetails, "Partner transaction deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }
