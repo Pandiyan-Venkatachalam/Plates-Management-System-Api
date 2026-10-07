@@ -141,22 +141,22 @@ namespace VinayagaPlates.Api.Filters
                         string htmlBody = $@"
                         <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
                             <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
-                                Vinayaga Plates Notification
+                                Hello Partner 👋
                             </h2>
-                            <p><b>Hello Partner,</b></p>
-                            <p>{actionDescription}</p>
+                            <p style='font-size: 16px; color: #2980b9;'><b>📋 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
                             
-                            <table style='width: 100%; margin-top: 15px; margin-bottom: 20px; background: #f9f9f9; padding: 10px; border-radius: 5px;'>
-                                <tr><td style='padding: 5px 0;'><b>Action By:</b> {userName}</td></tr>
-                                <tr><td style='padding: 5px 0;'><b>Time:</b> {GetIstTime()}</td></tr>
-                            </table>
+                            <h3 style='color: #34495e; margin-top: 20px;'>Action Details</h3>
+                            <ul style='list-style-type: none; padding: 0;'>
+                                <li style='padding: 4px 0;'><b>Action By:</b> {userName}</li>
+                                <li style='padding: 4px 0;'><b>Time:</b> {GetIstTime()}</li>
+                            </ul>
 
-                            <h3 style='color: #34495e;'>📋 Details:</h3>
+                            <h3 style='color: #34495e; margin-top: 20px;'>📦 Record Information</h3>
                             {detailsHtml}
 
                             <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
                             <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
-                                <i>This is an automated notification from Vinayaga Plates Management System.</i>
+                                <i>Thank you.<br><b>VPMS – Vinayaga Plates Management System</b></i>
                             </p>
                         </div>";
 
@@ -244,7 +244,7 @@ namespace VinayagaPlates.Api.Filters
                     var val = prop.GetValue(obj);
                     if (val != null)
                     {
-                        sb.Append($"<li style='padding: 4px 0; border-bottom: 1px solid #f1f1f1;'><b>{prop.Name}:</b> {val}</li>");
+                        sb.Append($"<li style='padding: 4px 0;'><b>{prop.Name}:</b> {val}</li>");
                     }
                 }
                 catch { }
