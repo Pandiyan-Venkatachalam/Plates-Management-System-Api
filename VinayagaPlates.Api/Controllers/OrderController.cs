@@ -192,7 +192,8 @@ namespace VinayagaPlates.Api.Controllers
                     Status = fullOrder.Status, 
                     CustomerName = fullOrder.Customer?.CustomerName ?? $"Customer ID {fullOrder.CustomerId}",
                     OrderDate = fullOrder.OrderDate.ToString("dd-MMM-yyyy"),
-                    TotalItems = fullOrder.Details?.Sum(d => d.OrderedQuantity) ?? 0
+                    TotalItems = fullOrder.Details?.Sum(d => d.OrderedQuantity) ?? 0,
+                    ItemSummary = fullOrder.Details != null ? string.Join(", ", fullOrder.Details.Select(d => $"{d.OrderedQuantity}x {d.Product?.ProductName ?? "Product"}")) : "No items"
                 } : null;
 
                 await _vpms.DeleteOrderAsync(id, username);
@@ -233,6 +234,7 @@ namespace VinayagaPlates.Api.Controllers
                     sale.SaleNumber, 
                     CustomerName = fullOrder?.Customer?.CustomerName ?? $"Customer ID {sale.CustomerId}",
                     TotalItems = fullOrder?.Details?.Sum(d => d.OrderedQuantity) ?? 0,
+                    ItemSummary = fullOrder?.Details != null ? string.Join(", ", fullOrder.Details.Select(d => $"{d.OrderedQuantity}x {d.Product?.ProductName ?? "Product"}")) : "No items",
                     sale.TotalAmount, 
                     sale.PaidAmount 
                 };

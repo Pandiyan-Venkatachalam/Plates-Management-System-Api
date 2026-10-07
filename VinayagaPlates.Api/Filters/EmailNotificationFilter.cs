@@ -9,6 +9,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VinayagaPlates.Application.Services;
+using VinayagaPlates.Application.Repositories;
+using VinayagaPlates.Domain.Entities;
 
 namespace VinayagaPlates.Api.Filters
 {
@@ -71,6 +73,25 @@ namespace VinayagaPlates.Api.Filters
                         }
                     }
                 }
+                
+                // Try to extract entity ID from dataObj to fetch full details later
+                int? entityId = null;
+                if (executedContext.Result is ObjectResult objRes && objRes.Value != null)
+                {
+                    var dataProp = objRes.Value.GetType().GetProperty("Data");
+                    if (dataProp != null)
+                    {
+                        var dataObj = dataProp.GetValue(objRes.Value);
+                        if (dataObj != null)
+                        {
+                            var idProp = dataObj.GetType().GetProperty($"{moduleName}Id") ?? dataObj.GetType().GetProperty("Id") ?? dataObj.GetType().GetProperty("SaleId");
+                            if (idProp != null && idProp.PropertyType == typeof(int))
+                            {
+                                entityId = (int)idProp.GetValue(dataObj)!;
+                            }
+                        }
+                    }
+                }
 
                 var scopeFactory = context.HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
 
@@ -106,8 +127,6 @@ namespace VinayagaPlates.Api.Filters
                             recipientEmails = $"{config["EmailSettings:Users:Pandiyan:Email"]},{config["EmailSettings:Users:Ranjith:Email"]}";
                         }
 
-                        if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(recipientEmails)) return;
-
                         string htmlBody = $@"
                         <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
                             <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
@@ -129,6 +148,38 @@ namespace VinayagaPlates.Api.Filters
                                 <i>This is an automated notification from Vinayaga Plates Management System.</i>
                             </p>
                         </div>";
+
+                        // If it's a Sale, try to fetch the full rich object and build the beautiful template
+                        if (entityId.HasValue)
+                        {
+                            if (moduleName.Equals("Sales", StringComparison.OrdinalIgnoreCase) || (moduleName.Equals("Order", StringComparison.OrdinalIgnoreCase) && actionDescription.Contains("Sale")))
+                            {
+                                var salesRepo = scope.ServiceProvider.GetRequiredService<ISalesRepository>();
+                                var fullSale = await salesRepo.GetSaleWithDetailsByIdAsync(entityId.Value);
+                                if (fullSale != null)
+                                {
+                                    htmlBody = GenerateBeautifulSaleHtml(fullSale, actionDescription, userName, GetIstTime());
+                                }
+                            }
+                            else if (moduleName.Equals("Order", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var orderRepo = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
+                                var fullOrder = await orderRepo.GetOrderWithDetailsByIdAsync(entityId.Value);
+                                if (fullOrder != null)
+                                {
+                                    htmlBody = GenerateBeautifulOrderHtml(fullOrder, actionDescription, userName, GetIstTime());
+                                }
+                            }
+                            else if (moduleName.Equals("Purchase", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var purchaseRepo = scope.ServiceProvider.GetRequiredService<IPurchaseRepository>();
+                                var fullPurchase = await purchaseRepo.GetPurchaseWithDetailsByIdAsync(entityId.Value);
+                                if (fullPurchase != null)
+                                {
+                                    htmlBody = GenerateBeautifulPurchaseHtml(fullPurchase, actionDescription, userName, GetIstTime());
+                                }
+                            }
+                        }
 
                         await emailService.SendEmailAsync(senderEmail, senderPass, recipientEmails, subject, htmlBody);
                     }
@@ -179,6 +230,241 @@ namespace VinayagaPlates.Api.Filters
                 catch { }
             }
             sb.Append("</ul>");
+            return sb.ToString();
+        }
+
+        private string GenerateBeautifulSaleHtml(Sale sale, string actionDescription, string userName, string time)
+        {
+            var sb = new StringBuilder();
+            sb.Append($@"
+            <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
+                <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
+                    Hello Partners 👋
+                </h2>
+                <p style='font-size: 16px; color: #27ae60;'><b>🛒 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
+                
+                <h3 style='color: #34495e; margin-top: 20px;'>Sale Information</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Sale ID:</b> {sale.SaleId}</li>
+                    <li style='padding: 4px 0;'><b>Sale Number:</b> {sale.SaleNumber}</li>
+                    <li style='padding: 4px 0;'><b>Customer:</b> {(sale.Customer?.CustomerName ?? "Unknown")}</li>
+                    <li style='padding: 4px 0;'><b>Date & Time:</b> {time}</li>
+                    <li style='padding: 4px 0;'><b>Recorded By:</b> {userName}</li>
+                    <li style='padding: 4px 0;'><b>Status:</b> {(sale.Status == "COMPLETED" ? "✅ COMPLETED" : sale.Status)}</li>
+                </ul>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>📦 Sale Details</h3>
+                <table style='width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;'>
+                    <thead>
+                        <tr style='background-color: #f1f1f1;'>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Plate Size</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Quantity</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Rate/Plate</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>");
+
+            int totalQuantity = 0;
+            decimal totalAmount = 0;
+            if (sale.Details != null)
+            {
+                foreach (var detail in sale.Details)
+                {
+                    var pName = detail.Product?.ProductName ?? "Unknown";
+                    var qty = detail.Quantity;
+                    var rate = detail.UnitPrice;
+                    var amt = qty * rate;
+                    totalQuantity += qty;
+                    totalAmount += amt;
+
+                    sb.Append($@"
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>{pName}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{qty:N0}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{rate:N2}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{amt:N2}</td>
+                        </tr>");
+                }
+            }
+
+            sb.Append($@"
+                    </tbody>
+                    <tfoot>
+                        <tr style='background-color: #f9f9f9; font-weight: bold;'>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Total</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{totalQuantity:N0}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'></td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{totalAmount:N2}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>💰 Payment Details</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Total Amount:</b> ₹{sale.TotalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Amount Paid:</b> ₹{sale.PaidAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Balance Due:</b> ₹{(sale.TotalAmount - sale.PaidAmount):N2}</li>
+                    <li style='padding: 4px 0;'><b>Payment Status:</b> {(sale.PaymentStatus == "PARTIALLY_PAID" ? "⚠️ PARTIALLY PAID" : sale.PaymentStatus)}</li>
+                </ul>
+
+                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
+                <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
+                    <i>Thank you.<br><b>VPMS – Vinayaga Plates Management System</b></i>
+                </p>
+            </div>");
+
+            return sb.ToString();
+        }
+
+        private string GenerateBeautifulOrderHtml(Order order, string actionDescription, string userName, string time)
+        {
+            var sb = new StringBuilder();
+            sb.Append($@"
+            <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
+                <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
+                    Hello Partners 👋
+                </h2>
+                <p style='font-size: 16px; color: #2980b9;'><b>📋 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
+                
+                <h3 style='color: #34495e; margin-top: 20px;'>Order Information</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Order ID:</b> {order.OrderId}</li>
+                    <li style='padding: 4px 0;'><b>Order Number:</b> {order.OrderNo}</li>
+                    <li style='padding: 4px 0;'><b>Customer:</b> {(order.Customer?.CustomerName ?? "Unknown")}</li>
+                    <li style='padding: 4px 0;'><b>Date & Time:</b> {time}</li>
+                    <li style='padding: 4px 0;'><b>Expected Date:</b> {order.ExpectedDate:dd-MMM-yyyy}</li>
+                    <li style='padding: 4px 0;'><b>Recorded By:</b> {userName}</li>
+                    <li style='padding: 4px 0;'><b>Status:</b> {order.Status}</li>
+                </ul>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>📦 Order Details</h3>
+                <table style='width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;'>
+                    <thead>
+                        <tr style='background-color: #f1f1f1;'>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Plate Size</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>");
+
+            int totalQuantity = 0;
+            if (order.Details != null)
+            {
+                foreach (var detail in order.Details)
+                {
+                    var pName = detail.Product?.ProductName ?? "Unknown";
+                    var qty = detail.OrderedQuantity;
+                    totalQuantity += qty;
+
+                    sb.Append($@"
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>{pName}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{qty:N0}</td>
+                        </tr>");
+                }
+            }
+
+            sb.Append($@"
+                    </tbody>
+                    <tfoot>
+                        <tr style='background-color: #f9f9f9; font-weight: bold;'>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Total</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{totalQuantity:N0}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
+                <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
+                    <i>Thank you.<br><b>VPMS – Vinayaga Plates Management System</b></i>
+                </p>
+            </div>");
+
+            return sb.ToString();
+        }
+
+        private string GenerateBeautifulPurchaseHtml(Purchase purchase, string actionDescription, string userName, string time)
+        {
+            var sb = new StringBuilder();
+            sb.Append($@"
+            <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
+                <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
+                    Hello Partners 👋
+                </h2>
+                <p style='font-size: 16px; color: #e67e22;'><b>🏭 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
+                
+                <h3 style='color: #34495e; margin-top: 20px;'>Purchase Information</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Purchase ID:</b> {purchase.PurchaseId}</li>
+                    <li style='padding: 4px 0;'><b>Purchase No:</b> {purchase.PurchaseNumber}</li>
+                    <li style='padding: 4px 0;'><b>Supplier:</b> {(purchase.Supplier?.SupplierName ?? "Unknown")}</li>
+                    <li style='padding: 4px 0;'><b>Date & Time:</b> {time}</li>
+                    <li style='padding: 4px 0;'><b>Recorded By:</b> {userName}</li>
+                    <li style='padding: 4px 0;'><b>Status:</b> {(purchase.Status == "COMPLETED" ? "✅ COMPLETED" : purchase.Status)}</li>
+                </ul>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>📦 Purchase Details</h3>
+                <table style='width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;'>
+                    <thead>
+                        <tr style='background-color: #f1f1f1;'>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Product Name</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Quantity</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Unit Cost</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>");
+
+            int totalQuantity = 0;
+            decimal totalAmount = 0;
+            if (purchase.Details != null)
+            {
+                foreach (var detail in purchase.Details)
+                {
+                    var pName = detail.Product?.ProductName ?? "Unknown";
+                    var qty = detail.Quantity;
+                    var cost = detail.UnitCost;
+                    var amt = qty * cost;
+                    totalQuantity += qty;
+                    totalAmount += amt;
+
+                    sb.Append($@"
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>{pName}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{qty:N0}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{cost:N2}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{amt:N2}</td>
+                        </tr>");
+                }
+            }
+
+            sb.Append($@"
+                    </tbody>
+                    <tfoot>
+                        <tr style='background-color: #f9f9f9; font-weight: bold;'>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Total</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{totalQuantity:N0}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'></td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{totalAmount:N2}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>💰 Payment Details</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Total Amount:</b> ₹{purchase.TotalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Amount Paid:</b> ₹{purchase.PaidAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Balance Due:</b> ₹{(purchase.TotalAmount - purchase.PaidAmount):N2}</li>
+                    <li style='padding: 4px 0;'><b>Payment Status:</b> {(purchase.PaymentStatus == "PARTIALLY_PAID" ? "⚠️ PARTIALLY PAID" : purchase.PaymentStatus)}</li>
+                </ul>
+
+                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
+                <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
+                    <i>Thank you.<br><b>VPMS – Vinayaga Plates Management System</b></i>
+                </p>
+            </div>");
+
             return sb.ToString();
         }
 

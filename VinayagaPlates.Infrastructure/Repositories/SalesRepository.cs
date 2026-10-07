@@ -19,7 +19,17 @@ namespace VinayagaPlates.Infrastructure.Repositories
             return await Db.Sales
                 .Include(s => s.Customer)
                 .Include(s => s.Details)
+                    .ThenInclude(d => d.Product)
                 .ToListAsync();
+        }
+
+        public async Task<Sale?> GetSaleWithDetailsByIdAsync(int id)
+        {
+            return await Db.Sales
+                .Include(s => s.Customer)
+                .Include(s => s.Details)
+                    .ThenInclude(d => d.Product)
+                .FirstOrDefaultAsync(s => s.SaleId == id);
         }
     }
 }
