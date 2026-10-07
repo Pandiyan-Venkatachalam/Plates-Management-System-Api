@@ -169,6 +169,7 @@ namespace VinayagaPlates.Api.Controllers
                 {
                     var sale = await _db.Sales
                         .Include(s => s.Details)
+                        .Include(s => s.Customer)
                         .FirstOrDefaultAsync(s => s.SaleId == id);
 
                     if (sale == null)
@@ -186,6 +187,8 @@ namespace VinayagaPlates.Api.Controllers
                             }
                         }
                     }
+                    
+                    int totalItems = sale.Details?.Sum(d => d.Quantity) ?? 0;
 
                     // 2. Remove child sale details
                     _db.SaleDetails.RemoveRange(sale.Details);
@@ -214,7 +217,7 @@ namespace VinayagaPlates.Api.Controllers
                         sale.PaidAmount, 
                         sale.Status, 
                         sale.SaleDate,
-                        TotalItems = sale.Details?.Sum(d => d.Quantity) ?? 0
+                        TotalItems = totalItems
                     };
                     var response = ApiResponse<object>.Success(details, "Sale deleted successfully and stock reverted.");
                     return StatusCode(response.StatusCode, response);

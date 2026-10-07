@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using VinayagaPlates.Application.Services;
 using VinayagaPlates.Application.Repositories;
 using VinayagaPlates.Domain.Entities;
+using System.Collections.Generic;
 
 namespace VinayagaPlates.Api.Filters
 {
@@ -111,13 +112,13 @@ namespace VinayagaPlates.Api.Filters
                         string senderPass = "";
                         string recipientEmails = "";
 
-                        if (userName.Equals("Pandiyan", StringComparison.OrdinalIgnoreCase))
+                        if (userName.Contains("Pandiyan", StringComparison.OrdinalIgnoreCase))
                         {
                             senderEmail = config["EmailSettings:Users:Pandiyan:Email"];
                             senderPass = config["EmailSettings:Users:Pandiyan:AppPassword"];
                             recipientEmails = config["EmailSettings:Users:Ranjith:Email"];
                         }
-                        else if (userName.Equals("Ranjith", StringComparison.OrdinalIgnoreCase))
+                        else if (userName.Contains("Ranjith", StringComparison.OrdinalIgnoreCase))
                         {
                             senderEmail = config["EmailSettings:Users:Ranjith:Email"];
                             senderPass = config["EmailSettings:Users:Ranjith:AppPassword"];
