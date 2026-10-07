@@ -12,6 +12,8 @@ using VinayagaPlates.Application.Services;
 using VinayagaPlates.Application.Repositories;
 using VinayagaPlates.Domain.Entities;
 using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
+using VinayagaPlates.Application;
 
 namespace VinayagaPlates.Api.Filters
 {
@@ -166,10 +168,16 @@ namespace VinayagaPlates.Api.Filters
                             if (moduleName.Equals("Sales", StringComparison.OrdinalIgnoreCase) || (moduleName.Equals("Order", StringComparison.OrdinalIgnoreCase) && actionDescription.Contains("Sale")))
                             {
                                 var salesRepo = scope.ServiceProvider.GetRequiredService<ISalesRepository>();
+                                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                                 var fullSale = await salesRepo.GetSaleWithDetailsByIdAsync(entityId.Value);
                                 if (fullSale != null)
                                 {
-                                    htmlBody = GenerateBeautifulSaleHtml(fullSale, actionDescription, userName, GetIstTime());
+                                    var tx = await db.AccountTransactions
+                                        .Include(t => t.Account)
+                                        .Where(t => t.ReferenceType == "SALE" && (t.ReferenceId == fullSale.SaleId.ToString() || t.ReferenceId == fullSale.SaleNumber))
+                                        .FirstOrDefaultAsync();
+                                    var accountName = tx?.Account?.AccountName ?? userName;
+                                    htmlBody = GenerateBeautifulSaleHtml(fullSale, actionDescription, accountName, GetIstTime());
                                 }
                             }
                             else if (moduleName.Equals("Order", StringComparison.OrdinalIgnoreCase))
@@ -184,10 +192,16 @@ namespace VinayagaPlates.Api.Filters
                             else if (moduleName.Equals("Purchase", StringComparison.OrdinalIgnoreCase))
                             {
                                 var purchaseRepo = scope.ServiceProvider.GetRequiredService<IPurchaseRepository>();
+                                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                                 var fullPurchase = await purchaseRepo.GetPurchaseWithDetailsByIdAsync(entityId.Value);
                                 if (fullPurchase != null)
                                 {
-                                    htmlBody = GenerateBeautifulPurchaseHtml(fullPurchase, actionDescription, userName, GetIstTime());
+                                    var tx = await db.AccountTransactions
+                                        .Include(t => t.Account)
+                                        .Where(t => t.ReferenceType == "PURCHASE" && (t.ReferenceId == fullPurchase.PurchaseId.ToString() || t.ReferenceId == fullPurchase.PurchaseNumber))
+                                        .FirstOrDefaultAsync();
+                                    var accountName = tx?.Account?.AccountName ?? userName;
+                                    htmlBody = GenerateBeautifulPurchaseHtml(fullPurchase, actionDescription, accountName, GetIstTime());
                                 }
                             }
                         }
