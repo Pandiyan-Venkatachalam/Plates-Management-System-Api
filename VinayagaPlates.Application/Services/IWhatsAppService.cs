@@ -8,6 +8,6 @@ namespace VinayagaPlates.Application.Services
     {
         Task<List<PartnerWhatsAppDto>> GetPartnerWhatsAppRecipientsAsync();
         Task<bool> SendWhatsAppMessageAsync(string phoneNumber, string message);
-        Task<int> BroadcastToPartnersAsync(string message, string eventType);
+        Task<int> BroadcastToPartnerAsync(string message, string eventType);
     }
 }

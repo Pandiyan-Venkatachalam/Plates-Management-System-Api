@@ -21,7 +21,7 @@ namespace VinayagaPlates.Application
         public DbSet<Product> Products { get; set; }
 
         public DbSet<Supplier> Suppliers { get; set; }
-        public DbSet<Partner> Partners { get; set; }
+        public DbSet<Partner> Partner { get; set; }
         public DbSet<Customer> Customers { get; set; }
         public DbSet<CustomerPricing> CustomerPricings { get; set; }
 

@@ -143,7 +143,7 @@ namespace VinayagaPlates.Api.Filters
                             <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
                                 Vinayaga Plates Notification
                             </h2>
-                            <p><b>Hello Partners,</b></p>
+                            <p><b>Hello Partner,</b></p>
                             <p>{actionDescription}</p>
                             
                             <table style='width: 100%; margin-top: 15px; margin-bottom: 20px; background: #f9f9f9; padding: 10px; border-radius: 5px;'>
@@ -259,7 +259,7 @@ namespace VinayagaPlates.Api.Filters
             sb.Append($@"
             <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
                 <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
-                    Hello Partners 👋
+                    Hello Partner 👋
                 </h2>
                 <p style='font-size: 16px; color: #27ae60;'><b>🛒 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
                 
@@ -343,7 +343,7 @@ namespace VinayagaPlates.Api.Filters
             sb.Append($@"
             <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
                 <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
-                    Hello Partners 👋
+                    Hello Partner 👋
                 </h2>
                 <p style='font-size: 16px; color: #2980b9;'><b>📋 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
                 
@@ -420,7 +420,7 @@ namespace VinayagaPlates.Api.Filters
             sb.Append($@"
             <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
                 <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
-                    Hello Partners 👋
+                    Hello Partner 👋
                 </h2>
                 <p style='font-size: 16px; color: #e67e22;'><b>🏭 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
                 
@@ -501,12 +501,18 @@ namespace VinayagaPlates.Api.Filters
         private string GenerateBeautifulPartnerTransactionHtml(object dataObj, string actionDescription, string userName, string time)
         {
             var type = dataObj.GetType();
-            var partner = type.GetProperty("Partner")?.GetValue(dataObj)?.ToString() ?? "Unknown";
+            var partner = type.GetProperty("Partner")?.GetValue(dataObj)?.ToString() 
+                       ?? type.GetProperty("PartnerName")?.GetValue(dataObj)?.ToString() ?? "Unknown";
             var transactionType = type.GetProperty("TransactionType")?.GetValue(dataObj)?.ToString() ?? "Unknown";
             var amountStr = type.GetProperty("Amount")?.GetValue(dataObj)?.ToString() ?? "0.00";
             var description = type.GetProperty("Description")?.GetValue(dataObj)?.ToString() ?? "Capital Investment";
-            var paymentMethod = type.GetProperty("PaymentMethod")?.GetValue(dataObj)?.ToString() ?? "Unknown";
-            var transactionDate = type.GetProperty("TransactionDate")?.GetValue(dataObj) as DateTime? ?? DateTime.UtcNow;
+            
+            // Payment Method is not returned in update response, default to Unknown or N/A
+            var paymentMethod = type.GetProperty("PaymentMethod")?.GetValue(dataObj)?.ToString() ?? "-";
+            
+            var transactionDateObj = type.GetProperty("TransactionDate")?.GetValue(dataObj) 
+                                  ?? type.GetProperty("CreatedAt")?.GetValue(dataObj);
+            var transactionDate = transactionDateObj as DateTime? ?? DateTime.UtcNow;
 
             decimal amount = 0;
             decimal.TryParse(amountStr, out amount);
@@ -516,7 +522,7 @@ namespace VinayagaPlates.Api.Filters
             return $@"
             <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
                 <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
-                    Hello Partners 👋
+                    Hello Partner 👋
                 </h2>
                 <p style='font-size: 16px; color: #27ae60;'><b>💸 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
 

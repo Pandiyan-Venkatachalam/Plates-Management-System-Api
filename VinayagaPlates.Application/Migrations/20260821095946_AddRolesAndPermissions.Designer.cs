@@ -621,7 +621,7 @@ namespace VinayagaPlates.Application.Migrations
 
                     b.HasKey("PartnerId");
 
-                    b.ToTable("Partners");
+                    b.ToTable("Partner");
                 });
 
             modelBuilder.Entity("VinayagaPlates.Domain.Entities.PartnerLedger", b =>

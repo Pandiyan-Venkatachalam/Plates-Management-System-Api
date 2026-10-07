@@ -31,7 +31,7 @@ namespace VinayagaPlates.Api.Controllers
         public async Task<IActionResult> GetAll()
         {
             var data = await _partnerRepo.GetAllAsync();
-            var response = ApiResponse<object>.Success(data, "Partners retrieved successfully.");
+            var response = ApiResponse<object>.Success(data, "Partner retrieved successfully.");
             return StatusCode(response.StatusCode, response);
         }
 

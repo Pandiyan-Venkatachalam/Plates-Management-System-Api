@@ -116,7 +116,7 @@ namespace VinayagaPlates.Api.Controllers
                     req.AccountName,
                     User.Identity?.Name ?? "SYSTEM");
 
-                var partner = await _db.Partners.FindAsync(req.PartnerId);
+                var partner = await _db.Partner.FindAsync(req.PartnerId);
                 var details = new {
                     Partner = partner?.PartnerName ?? "Unknown",
                     TransactionType = req.TransactionType,
@@ -180,7 +180,7 @@ namespace VinayagaPlates.Api.Controllers
                 ledger.CreatedAt
             );
 
-            var response = ApiResponse<PartnerLedgerResponse>.Success(res, "Ledger entry updated successfully.");
+            var response = ApiResponse<PartnerLedgerResponse>.Success(res, "Partner transaction updated successfully.");
             return StatusCode(response.StatusCode, response);
         }
 

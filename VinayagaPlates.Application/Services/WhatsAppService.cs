@@ -29,7 +29,7 @@ namespace VinayagaPlates.Application.Services
         {
             try
             {
-                var partners = await _db.Partners
+                var Partner = await _db.Partner
                     .Where(p => !p.IsDeleted && !string.IsNullOrWhiteSpace(p.ContactPhone))
                     .Select(p => new PartnerWhatsAppDto
                     {
@@ -39,7 +39,7 @@ namespace VinayagaPlates.Application.Services
                     })
                     .ToListAsync();
 
-                return partners.Where(p => !string.IsNullOrEmpty(p.ContactPhone)).ToList();
+                return Partner.Where(p => !string.IsNullOrEmpty(p.ContactPhone)).ToList();
             }
             catch (Exception ex)
             {
@@ -98,12 +98,12 @@ namespace VinayagaPlates.Application.Services
             }
         }
 
-        public async Task<int> BroadcastToPartnersAsync(string message, string eventType)
+        public async Task<int> BroadcastToPartnerAsync(string message, string eventType)
         {
-            var partners = await GetPartnerWhatsAppRecipientsAsync();
+            var Partner = await GetPartnerWhatsAppRecipientsAsync();
             int successCount = 0;
 
-            foreach (var partner in partners)
+            foreach (var partner in Partner)
             {
                 var sent = await SendWhatsAppMessageAsync(partner.ContactPhone, message);
                 if (sent) successCount++;

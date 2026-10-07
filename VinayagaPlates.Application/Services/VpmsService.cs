@@ -131,7 +131,7 @@ namespace VinayagaPlates.Application.Services
             }
 
             // Seed default Partner if none exist
-            if (!await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(_db.Partners))
+            if (!await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(_db.Partner))
             {
                 var partner = new Partner
                 {
@@ -140,7 +140,7 @@ namespace VinayagaPlates.Application.Services
                     CreatedBy = "SYSTEM",
                     CreatedAt = DateTime.UtcNow
                 };
-                await _db.Partners.AddAsync(partner);
+                await _db.Partner.AddAsync(partner);
                 await _db.SaveChangesAsync();
             }
 
@@ -623,7 +623,7 @@ namespace VinayagaPlates.Application.Services
         }
 
 
-        // --- PARTNERS ---
+        // --- Partner ---
 
         public async Task RecordPartnerTransactionAsync(int partnerId, string type, decimal amount, string desc, string accountName, string username)
         {
