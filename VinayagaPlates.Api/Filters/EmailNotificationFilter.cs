@@ -344,23 +344,31 @@ namespace VinayagaPlates.Api.Filters
                         <tr style='background-color: #f1f1f1;'>
                             <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Plate Size</th>
                             <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Quantity</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Rate/Plate</th>
+                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Amount</th>
                         </tr>
                     </thead>
                     <tbody>");
 
             int totalQuantity = 0;
+            decimal totalAmount = 0;
             if (order.Details != null)
             {
                 foreach (var detail in order.Details)
                 {
                     var pName = detail.Product?.ProductName ?? "Unknown";
                     var qty = detail.OrderedQuantity;
+                    var rate = detail.SellingPrice;
+                    var amt = qty * rate;
                     totalQuantity += qty;
+                    totalAmount += amt;
 
                     sb.Append($@"
                         <tr>
                             <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>{pName}</td>
                             <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{qty:N0}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{rate:N2}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{amt:N2}</td>
                         </tr>");
                 }
             }
@@ -371,6 +379,8 @@ namespace VinayagaPlates.Api.Filters
                         <tr style='background-color: #f9f9f9; font-weight: bold;'>
                             <td style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Total</td>
                             <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{totalQuantity:N0}</td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'></td>
+                            <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>₹{totalAmount:N2}</td>
                         </tr>
                     </tfoot>
                 </table>
