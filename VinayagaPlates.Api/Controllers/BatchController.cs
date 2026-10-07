@@ -173,8 +173,9 @@ namespace VinayagaPlates.Api.Controllers
         [HttpPost("adjust")]
         public async Task<IActionResult> AdjustStock([FromBody] StockAdjustmentRequest req)
         {
-            await _vpms.AdjustStockAsync(req.BatchId, req.NewQuantity, req.Description, User.Identity?.Name ?? "SYSTEM");
-            return Ok(new { message = "Stock adjusted successfully." });
+            var details = await _vpms.AdjustStockAsync(req.BatchId, req.NewQuantity, req.Description, User.Identity?.Name ?? "SYSTEM");
+            var response = ApiResponse<object>.Success(details, "Stock adjusted successfully.");
+            return StatusCode(response.StatusCode, response);
         }
     }
 }

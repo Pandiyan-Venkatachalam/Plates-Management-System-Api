@@ -688,7 +688,7 @@ namespace VinayagaPlates.Application.Services
 
         // --- ADJUSTMENTS ---
 
-        public async Task AdjustStockAsync(int batchId, int newQuantity, string desc, string username)
+        public async Task<object> AdjustStockAsync(int batchId, int newQuantity, string desc, string username)
         {
             var batch = await _batchRepo.GetBatchByIdAsync(batchId);
             if (batch == null) throw new ArgumentException("Batch not found.");
@@ -721,6 +721,15 @@ namespace VinayagaPlates.Application.Services
 
             await _batchRepo.SaveChangesAsync();
             await LogAuditAsync(username, "STOCK_ADJUSTMENT", "TB_INVENTORY_BATCH", batchId.ToString(), null, $"New qty: {newQuantity}");
+            
+            return new {
+                BatchNo = batch.BatchNumber,
+                ProductName = batch.Product?.ProductName ?? "Unknown",
+                InitialQuantity = batch.CurrentQuantity - difference,
+                AdjustedByDifference = difference,
+                FinalQuantity = newQuantity,
+                Description = desc
+            };
         }
 
         public async Task UpdateSaleAsync(int id, SaleUpdateRequest req, string username)
