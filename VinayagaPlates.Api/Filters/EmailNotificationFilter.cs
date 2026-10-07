@@ -40,12 +40,23 @@ namespace VinayagaPlates.Api.Filters
                 var color = method == "POST" ? "🟢" : method == "PUT" ? "🔵" : "🔴";
                 var subject = $"{color} [VPMS] {moduleName} {action}";
 
+                var actionDescription = $"A record in <b>{moduleName}</b> has been {action.ToLower()} in VPMS.";
                 string detailsHtml = "No additional details available.";
                 
                 if (executedContext.Result is ObjectResult objectResult && objectResult.Value != null)
                 {
                     var responseValue = objectResult.Value;
                     var dataType = responseValue.GetType();
+                    
+                    var msgProp = dataType.GetProperty("Message");
+                    var msgObj = msgProp?.GetValue(responseValue);
+                    if (msgObj != null && !string.IsNullOrWhiteSpace(msgObj.ToString()))
+                    {
+                        var msgString = msgObj.ToString();
+                        actionDescription = $"<b>{msgString}</b>";
+                        subject = $"{color} [VPMS] {msgString}";
+                    }
+
                     var dataProp = dataType.GetProperty("Data");
                     if (dataProp != null)
                     {
@@ -54,11 +65,9 @@ namespace VinayagaPlates.Api.Filters
                         {
                             detailsHtml = GenerateHtmlFromObject(dataObj);
                         }
-                        else
+                        else if (msgObj != null)
                         {
-                            var msgProp = dataType.GetProperty("Message");
-                            var msgObj = msgProp?.GetValue(responseValue);
-                            if (msgObj != null) detailsHtml = $"<ul><li><b>Message:</b> {msgObj}</li></ul>";
+                            detailsHtml = $"<ul><li><b>Message:</b> {msgObj}</li></ul>";
                         }
                     }
                 }
@@ -105,7 +114,7 @@ namespace VinayagaPlates.Api.Filters
                                 Vinayaga Plates Notification
                             </h2>
                             <p><b>Hello Partners,</b></p>
-                            <p>A record in <b>{moduleName}</b> has been {action.ToLower()} in VPMS.</p>
+                            <p>{actionDescription}</p>
                             
                             <table style='width: 100%; margin-top: 15px; margin-bottom: 20px; background: #f9f9f9; padding: 10px; border-radius: 5px;'>
                                 <tr><td style='padding: 5px 0;'><b>Action By:</b> {userName}</td></tr>

@@ -223,10 +223,21 @@ namespace VinayagaPlates.Api.Controllers
             try
             {
                 var username = User.Identity?.Name ?? "SYSTEM";
+                
+                var fullOrder = await _orderRepo.GetOrderWithDetailsByIdAsync(id);
                 var convertReq = req with { OrderId = id };
                 var sale = await _vpms.ConvertOrderToSaleAsync(convertReq, username);
 
-                var response = ApiResponse<object>.Success(new { sale.SaleId, sale.SaleNumber, sale.TotalAmount, sale.PaidAmount }, "Order converted into Sale successfully!", 201);
+                var details = new { 
+                    sale.SaleId, 
+                    sale.SaleNumber, 
+                    CustomerName = fullOrder?.Customer?.CustomerName ?? $"Customer ID {sale.CustomerId}",
+                    TotalItems = fullOrder?.Details?.Sum(d => d.OrderedQuantity) ?? 0,
+                    sale.TotalAmount, 
+                    sale.PaidAmount 
+                };
+
+                var response = ApiResponse<object>.Success(details, "Order converted into Sale successfully!", 201);
                 return StatusCode(201, response);
             }
             catch (ArgumentException ex)
