@@ -19,16 +19,13 @@ namespace VinayagaPlates.Infrastructure.Services
             _logger = logger;
         }
 
-        public async Task SendEmailAsync(string to, string subject, string htmlBody)
+        public async Task SendEmailAsync(string senderEmail, string senderPassword, string to, string subject, string htmlBody)
         {
             try
             {
-                var senderEmail = _config["EmailSettings:SenderEmail"];
-                var senderPassword = _config["EmailSettings:SenderPassword"];
-
                 if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(senderPassword))
                 {
-                    _logger.LogWarning("Email settings are not configured properly.");
+                    _logger.LogWarning("Email credentials are not provided.");
                     return;
                 }
 

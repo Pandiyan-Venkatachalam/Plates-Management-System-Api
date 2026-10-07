@@ -4,6 +4,6 @@ namespace VinayagaPlates.Application.Services
 {
     public interface IEmailService
     {
-        Task SendEmailAsync(string to, string subject, string htmlBody);
+        Task SendEmailAsync(string senderEmail, string senderPassword, string to, string subject, string htmlBody);
     }
 }
