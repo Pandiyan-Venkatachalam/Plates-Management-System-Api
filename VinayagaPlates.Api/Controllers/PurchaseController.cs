@@ -159,7 +159,16 @@ namespace VinayagaPlates.Api.Controllers
             _purchaseRepo.Delete(purchase);
             await _purchaseRepo.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(null, "Purchase deleted successfully.");
+            var details = new { 
+                purchase.PurchaseId, 
+                purchase.PurchaseNumber, 
+                purchase.TotalAmount, 
+                purchase.PaidAmount, 
+                purchase.Status, 
+                purchase.SupplierId,
+                purchase.PurchaseDate 
+            };
+            var response = ApiResponse<object>.Success(details, "Purchase deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

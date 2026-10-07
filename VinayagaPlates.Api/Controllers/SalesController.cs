@@ -193,7 +193,16 @@ namespace VinayagaPlates.Api.Controllers
 
                     await transaction.CommitAsync();
 
-                    var response = ApiResponse<object>.Success(null, "Sale deleted successfully and stock reverted.");
+                    var details = new { 
+                        sale.SaleId, 
+                        sale.SaleNumber, 
+                        sale.TotalAmount, 
+                        sale.PaidAmount, 
+                        sale.Status, 
+                        sale.CustomerId,
+                        sale.SaleDate
+                    };
+                    var response = ApiResponse<object>.Success(details, "Sale deleted successfully and stock reverted.");
                     return StatusCode(response.StatusCode, response);
                 }
                 catch (Exception ex)

@@ -115,7 +115,14 @@ namespace VinayagaPlates.Api.Controllers
             _supplierRepo.Update(supplier);
             await _supplierRepo.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(null, "Supplier deleted successfully.");
+            var details = new { 
+                supplier.SupplierId, 
+                supplier.SupplierName, 
+                supplier.ContactPerson, 
+                supplier.Phone, 
+                supplier.Email 
+            };
+            var response = ApiResponse<object>.Success(details, "Supplier deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

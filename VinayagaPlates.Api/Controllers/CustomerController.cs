@@ -85,7 +85,14 @@ namespace VinayagaPlates.Api.Controllers
             _customerRepo.Update(customer);
             await _customerRepo.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(null, "Customer deleted successfully.");
+            var details = new { 
+                customer.CustomerId, 
+                customer.CustomerName, 
+                customer.Phone, 
+                customer.Email,
+                customer.Address 
+            };
+            var response = ApiResponse<object>.Success(details, "Customer deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

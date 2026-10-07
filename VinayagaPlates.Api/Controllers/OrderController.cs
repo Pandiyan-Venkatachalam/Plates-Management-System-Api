@@ -165,9 +165,21 @@ namespace VinayagaPlates.Api.Controllers
             try
             {
                 var username = User.Identity?.Name ?? "SYSTEM";
+                
+                // Fetch the object before deleting so we can include it in the email notification
+                var order = await _orderRepo.GetByIdAsync(id);
+                var details = order != null ? new { 
+                    order.OrderId, 
+                    order.OrderNo, 
+                    order.Status, 
+                    order.CustomerId,
+                    order.OrderDate,
+                    order.ExpectedDate
+                } : null;
+
                 await _vpms.DeleteOrderAsync(id, username);
 
-                var response = ApiResponse<string>.Success(null!, "Order deleted successfully.");
+                var response = ApiResponse<object>.Success(details, "Order deleted successfully.");
                 return StatusCode(200, response);
             }
             catch (ArgumentException ex)

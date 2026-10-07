@@ -109,7 +109,7 @@ namespace VinayagaPlates.Api.Filters
                             
                             <table style='width: 100%; margin-top: 15px; margin-bottom: 20px; background: #f9f9f9; padding: 10px; border-radius: 5px;'>
                                 <tr><td style='padding: 5px 0;'><b>Action By:</b> {userName}</td></tr>
-                                <tr><td style='padding: 5px 0;'><b>Time:</b> {DateTime.Now.ToString("dd-MMM-yyyy, hh:mm tt")}</td></tr>
+                                <tr><td style='padding: 5px 0;'><b>Time:</b> {GetIstTime()}</td></tr>
                             </table>
 
                             <h3 style='color: #34495e;'>📋 Details:</h3>
@@ -171,6 +171,28 @@ namespace VinayagaPlates.Api.Filters
             }
             sb.Append("</ul>");
             return sb.ToString();
+        }
+
+        private string GetIstTime()
+        {
+            try
+            {
+                TimeZoneInfo istZone;
+                try
+                {
+                    istZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata");
+                }
+                catch (TimeZoneNotFoundException)
+                {
+                    istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                }
+                var istTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone);
+                return istTime.ToString("dd-MMM-yyyy, hh:mm tt") + " IST";
+            }
+            catch
+            {
+                return DateTime.UtcNow.AddHours(5).AddMinutes(30).ToString("dd-MMM-yyyy, hh:mm tt") + " IST";
+            }
         }
     }
 }
