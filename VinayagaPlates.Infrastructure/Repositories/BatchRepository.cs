@@ -22,7 +22,9 @@ namespace VinayagaPlates.Infrastructure.Repositories
         }
 
         public async Task<InventoryBatch> GetBatchByIdAsync(int batchId) =>
-            await Db.InventoryBatches.FindAsync(batchId);
+            await Db.InventoryBatches
+                .Include(b => b.Product)
+                .FirstOrDefaultAsync(b => b.BatchId == batchId);
 
         public async Task AddBatchAsync(InventoryBatch batch) =>
             await Db.InventoryBatches.AddAsync(batch);
