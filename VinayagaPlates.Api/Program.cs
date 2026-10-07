@@ -11,11 +11,15 @@ using VinayagaPlates.Application;
 using VinayagaPlates.Application.Repositories;
 using VinayagaPlates.Infrastructure.Repositories;
 using VinayagaPlates.Infrastructure.Security;
+using VinayagaPlates.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers()
+builder.Services.AddControllers(options => 
+    {
+        options.Filters.Add<VinayagaPlates.Api.Filters.EmailNotificationFilter>();
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
@@ -60,6 +64,7 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<VpmsService>();
 
 // Register Repositories
