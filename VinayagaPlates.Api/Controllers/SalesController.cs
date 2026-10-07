@@ -93,7 +93,20 @@ namespace VinayagaPlates.Api.Controllers
             try
             {
                 var result = await _vpms.CreateSaleAsync(req, user);
-                var response = ApiResponse<Sale>.Success(result, "Sale recorded successfully.", 201);
+                
+                var allSales = await _salesRepo.GetSalesWithDetailsAsync();
+                var fullSale = allSales.FirstOrDefault(s => s.SaleId == result.SaleId);
+                
+                var details = new { 
+                    SaleId = result.SaleId, 
+                    SaleNumber = result.SaleNumber,
+                    CustomerName = fullSale?.Customer?.CustomerName ?? $"Customer ID {result.CustomerId}",
+                    TotalItems = fullSale?.Details?.Sum(d => d.Quantity) ?? 0,
+                    TotalAmount = result.TotalAmount,
+                    Status = result.Status
+                };
+
+                var response = ApiResponse<object>.Success(details, "Sale recorded successfully.", 201);
                 return StatusCode(response.StatusCode, response);
             }
             catch (InvalidOperationException ex)
@@ -119,7 +132,6 @@ namespace VinayagaPlates.Api.Controllers
                     var projected = new {
                         populated.SaleId,
                         populated.SaleNumber,
-                        populated.CustomerId,
                         CustomerName = populated.Customer?.CustomerName ?? "Unknown",
                         populated.SaleDate,
                         populated.TotalAmount,
@@ -127,7 +139,8 @@ namespace VinayagaPlates.Api.Controllers
                         BalanceAmount = populated.TotalAmount - populated.PaidAmount,
                         populated.PaymentStatus,
                         populated.Status,
-                        Details = populated.Details.Select(d => new {
+                        TotalItems = populated.Details?.Sum(d => d.Quantity) ?? 0,
+                        Details = populated.Details?.Select(d => new {
                             d.SaleDetailId,
                             d.ProductId,
                             d.BatchId,
@@ -139,7 +152,7 @@ namespace VinayagaPlates.Api.Controllers
                     return StatusCode(successResponse.StatusCode, successResponse);
                 }
 
-                return Ok(ApiResponse<object>.Success(null, "Sale updated successfully."));
+                return Ok(ApiResponse<object>.Success(new { SaleId = id }, "Sale updated successfully."));
             }
             catch (Exception ex)
             {
@@ -196,11 +209,12 @@ namespace VinayagaPlates.Api.Controllers
                     var details = new { 
                         sale.SaleId, 
                         sale.SaleNumber, 
+                        CustomerName = sale.Customer?.CustomerName ?? $"Customer ID {sale.CustomerId}",
                         sale.TotalAmount, 
                         sale.PaidAmount, 
                         sale.Status, 
-                        sale.CustomerId,
-                        sale.SaleDate
+                        sale.SaleDate,
+                        TotalItems = sale.Details?.Sum(d => d.Quantity) ?? 0
                     };
                     var response = ApiResponse<object>.Success(details, "Sale deleted successfully and stock reverted.");
                     return StatusCode(response.StatusCode, response);

@@ -116,7 +116,16 @@ namespace VinayagaPlates.Api.Controllers
                 var username = User.Identity?.Name ?? "SYSTEM";
                 var order = await _vpms.CreateOrderAsync(req, username);
 
-                var response = ApiResponse<object>.Success(new { order.OrderId, order.OrderNo }, "Order created successfully as draft.", 201);
+                var fullOrder = await _orderRepo.GetOrderWithDetailsByIdAsync(order.OrderId);
+                var details = new { 
+                    OrderId = order.OrderId, 
+                    OrderNo = order.OrderNo,
+                    CustomerName = fullOrder?.Customer?.CustomerName ?? $"Customer ID {order.CustomerId}",
+                    TotalItems = fullOrder?.Details?.Sum(d => d.OrderedQuantity) ?? 0,
+                    Status = order.Status
+                };
+
+                var response = ApiResponse<object>.Success(details, "Order created successfully as draft.", 201);
                 return StatusCode(201, response);
             }
             catch (ArgumentException ex)
@@ -139,7 +148,16 @@ namespace VinayagaPlates.Api.Controllers
                 var username = User.Identity?.Name ?? "SYSTEM";
                 var order = await _vpms.UpdateOrderAsync(id, req, username);
 
-                var response = ApiResponse<object>.Success(new { order.OrderId, order.OrderNo }, "Order updated successfully.");
+                var fullOrder = await _orderRepo.GetOrderWithDetailsByIdAsync(order.OrderId);
+                var details = new { 
+                    OrderId = order.OrderId, 
+                    OrderNo = order.OrderNo,
+                    CustomerName = fullOrder?.Customer?.CustomerName ?? $"Customer ID {order.CustomerId}",
+                    TotalItems = fullOrder?.Details?.Sum(d => d.OrderedQuantity) ?? 0,
+                    Status = order.Status
+                };
+
+                var response = ApiResponse<object>.Success(details, "Order updated successfully.");
                 return StatusCode(200, response);
             }
             catch (ArgumentException ex)
@@ -167,14 +185,14 @@ namespace VinayagaPlates.Api.Controllers
                 var username = User.Identity?.Name ?? "SYSTEM";
                 
                 // Fetch the object before deleting so we can include it in the email notification
-                var order = await _orderRepo.GetByIdAsync(id);
-                var details = order != null ? new { 
-                    order.OrderId, 
-                    order.OrderNo, 
-                    order.Status, 
-                    order.CustomerId,
-                    order.OrderDate,
-                    order.ExpectedDate
+                var fullOrder = await _orderRepo.GetOrderWithDetailsByIdAsync(id);
+                var details = fullOrder != null ? new { 
+                    fullOrder.OrderId, 
+                    fullOrder.OrderNo, 
+                    Status = fullOrder.Status, 
+                    CustomerName = fullOrder.Customer?.CustomerName ?? $"Customer ID {fullOrder.CustomerId}",
+                    OrderDate = fullOrder.OrderDate.ToString("dd-MMM-yyyy"),
+                    TotalItems = fullOrder.Details?.Sum(d => d.OrderedQuantity) ?? 0
                 } : null;
 
                 await _vpms.DeleteOrderAsync(id, username);

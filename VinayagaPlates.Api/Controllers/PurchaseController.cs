@@ -92,8 +92,18 @@ namespace VinayagaPlates.Api.Controllers
         {
             var user = User.Identity?.Name ?? "SYSTEM";
             var result = await _vpms.CreatePurchaseAsync(req, user);
-            var populatedResult = await _purchaseRepo.GetPurchaseWithDetailsByIdAsync(result.PurchaseId);
-            var response = ApiResponse<Purchase>.Success(populatedResult ?? result, "Purchase created successfully.", 201);
+            var fullPurchase = await _purchaseRepo.GetPurchaseWithDetailsByIdAsync(result.PurchaseId);
+            
+            var details = new { 
+                PurchaseId = result.PurchaseId, 
+                PurchaseNumber = result.PurchaseNumber,
+                SupplierName = fullPurchase?.Supplier?.SupplierName ?? $"Supplier ID {result.SupplierId}",
+                TotalItems = fullPurchase?.Details?.Sum(d => d.Quantity) ?? 0,
+                TotalAmount = result.TotalAmount,
+                Status = result.Status
+            };
+
+            var response = ApiResponse<object>.Success(details, "Purchase created successfully.", 201);
             return StatusCode(response.StatusCode, response);
         }
 
@@ -111,7 +121,6 @@ namespace VinayagaPlates.Api.Controllers
                     var projected = new {
                         populated.PurchaseId,
                         populated.PurchaseNumber,
-                        populated.SupplierId,
                         SupplierName = populated.Supplier?.SupplierName ?? "Unknown",
                         populated.PurchaseDate,
                         populated.TotalAmount,
@@ -119,7 +128,8 @@ namespace VinayagaPlates.Api.Controllers
                         BalanceAmount = populated.TotalAmount - populated.PaidAmount,
                         populated.PaymentStatus,
                         populated.Status,
-                        Details = populated.Details.Select(d => new {
+                        TotalItems = populated.Details?.Sum(d => d.Quantity) ?? 0,
+                        Details = populated.Details?.Select(d => new {
                             d.PurchaseDetailId,
                             d.ProductId,
                             d.BatchId,
@@ -131,7 +141,7 @@ namespace VinayagaPlates.Api.Controllers
                     return StatusCode(successResponse.StatusCode, successResponse);
                 }
 
-                return Ok(ApiResponse<object>.Success(null, "Purchase updated successfully."));
+                return Ok(ApiResponse<object>.Success(new { PurchaseId = id }, "Purchase updated successfully."));
             }
             catch (Exception ex)
             {
@@ -142,7 +152,7 @@ namespace VinayagaPlates.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePurchase(int id)
         {
-            var purchase = await _purchaseRepo.GetByIdAsync(id);
+            var purchase = await _purchaseRepo.GetPurchaseWithDetailsByIdAsync(id);
             if (purchase == null)
                 return NotFound(ApiResponse<object>.Fail("Purchase not found.", 404));
 
@@ -162,11 +172,12 @@ namespace VinayagaPlates.Api.Controllers
             var details = new { 
                 purchase.PurchaseId, 
                 purchase.PurchaseNumber, 
+                SupplierName = purchase.Supplier?.SupplierName ?? $"Supplier ID {purchase.SupplierId}",
                 purchase.TotalAmount, 
                 purchase.PaidAmount, 
                 purchase.Status, 
-                purchase.SupplierId,
-                purchase.PurchaseDate 
+                purchase.PurchaseDate,
+                TotalItems = purchase.Details?.Sum(d => d.Quantity) ?? 0
             };
             var response = ApiResponse<object>.Success(details, "Purchase deleted successfully.");
             return StatusCode(response.StatusCode, response);
