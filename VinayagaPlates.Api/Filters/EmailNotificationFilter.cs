@@ -322,7 +322,9 @@ namespace VinayagaPlates.Api.Filters
 
                 <h3 style='color: #34495e; margin-top: 20px;'>💰 Payment Details</h3>
                 <ul style='list-style-type: none; padding: 0;'>
-                    <li style='padding: 4px 0;'><b>Total Amount:</b> ₹{sale.TotalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Gross Amount:</b> ₹{totalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Adjust Amount:</b> ₹{(sale.TotalAmount - totalAmount):N2}</li>
+                    <li style='padding: 4px 0;'><b>Final Amount:</b> ₹{sale.TotalAmount:N2}</li>
                     <li style='padding: 4px 0;'><b>Amount Paid:</b> ₹{sale.PaidAmount:N2}</li>
                     <li style='padding: 4px 0;'><b>Balance Due:</b> ₹{(sale.TotalAmount - sale.PaidAmount):N2}</li>
                     <li style='padding: 4px 0;'><b>Payment Status:</b> {(sale.PaymentStatus == "PARTIALLY_PAID" ? "⚠️ PARTIALLY PAID" : sale.PaymentStatus)}</li>
@@ -485,7 +487,9 @@ namespace VinayagaPlates.Api.Filters
 
                 <h3 style='color: #34495e; margin-top: 20px;'>💰 Payment Details</h3>
                 <ul style='list-style-type: none; padding: 0;'>
-                    <li style='padding: 4px 0;'><b>Total Amount:</b> ₹{purchase.TotalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Gross Amount:</b> ₹{totalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Adjust Amount:</b> ₹{(purchase.TotalAmount - totalAmount):N2}</li>
+                    <li style='padding: 4px 0;'><b>Final Amount:</b> ₹{purchase.TotalAmount:N2}</li>
                     <li style='padding: 4px 0;'><b>Amount Paid:</b> ₹{purchase.PaidAmount:N2}</li>
                     <li style='padding: 4px 0;'><b>Balance Due:</b> ₹{(purchase.TotalAmount - purchase.PaidAmount):N2}</li>
                     <li style='padding: 4px 0;'><b>Payment Status:</b> {(purchase.PaymentStatus == "PARTIALLY_PAID" ? "⚠️ PARTIALLY PAID" : purchase.PaymentStatus)}</li>
