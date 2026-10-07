@@ -116,7 +116,7 @@ namespace VinayagaPlates.Api.Controllers
                     req.AccountName,
                     User.Identity?.Name ?? "SYSTEM");
 
-                var partner = await _db.Partner.FindAsync(req.PartnerId);
+                var partner = await _db.Partners.FindAsync(req.PartnerId);
                 var details = new {
                     Partner = partner?.PartnerName ?? "Unknown",
                     TransactionType = req.TransactionType,

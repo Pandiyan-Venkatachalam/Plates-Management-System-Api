@@ -33,7 +33,7 @@ namespace VinayagaPlates.Application.Migrations
                 table: "InventoryMovements");
 
             migrationBuilder.DropForeignKey(
-                name: "FK_PartnerLedgers_Partner_PartnerId",
+                name: "FK_PartnerLedgers_Partners_PartnerId",
                 table: "PartnerLedgers");
 
             migrationBuilder.DropForeignKey(
@@ -340,9 +340,9 @@ namespace VinayagaPlates.Application.Migrations
                         principalColumn: "AccountId",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_PartnerTransactions_Partner_PartnerId",
+                        name: "FK_PartnerTransactions_Partners_PartnerId",
                         column: x => x.PartnerId,
-                        principalTable: "Partner",
+                        principalTable: "Partners",
                         principalColumn: "PartnerId",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -662,10 +662,10 @@ namespace VinayagaPlates.Application.Migrations
                 onDelete: ReferentialAction.Restrict);
 
             migrationBuilder.AddForeignKey(
-                name: "FK_PartnerLedgers_Partner_PartnerId",
+                name: "FK_PartnerLedgers_Partners_PartnerId",
                 table: "PartnerLedgers",
                 column: "PartnerId",
-                principalTable: "Partner",
+                principalTable: "Partners",
                 principalColumn: "PartnerId",
                 onDelete: ReferentialAction.Restrict);
 
@@ -786,7 +786,7 @@ namespace VinayagaPlates.Application.Migrations
                 table: "InventoryMovements");
 
             migrationBuilder.DropForeignKey(
-                name: "FK_PartnerLedgers_Partner_PartnerId",
+                name: "FK_PartnerLedgers_Partners_PartnerId",
                 table: "PartnerLedgers");
 
             migrationBuilder.DropForeignKey(
@@ -1003,10 +1003,10 @@ namespace VinayagaPlates.Application.Migrations
                 onDelete: ReferentialAction.Cascade);
 
             migrationBuilder.AddForeignKey(
-                name: "FK_PartnerLedgers_Partner_PartnerId",
+                name: "FK_PartnerLedgers_Partners_PartnerId",
                 table: "PartnerLedgers",
                 column: "PartnerId",
-                principalTable: "Partner",
+                principalTable: "Partners",
                 principalColumn: "PartnerId",
                 onDelete: ReferentialAction.Cascade);
 

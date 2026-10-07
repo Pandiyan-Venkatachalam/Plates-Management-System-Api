@@ -33,7 +33,7 @@ namespace VinayagaPlates.Api.Controllers
             try
             {
                 var auditLogs = await _db.AuditLogs
-                    .Where(a => !a.ActionName.StartsWith("WHATSAPP_ALERT") && !a.ActionName.StartsWith("WHATSAPP_BROADCAST") && a.TableName != "Partner")
+                    .Where(a => !a.ActionName.StartsWith("WHATSAPP_ALERT") && !a.ActionName.StartsWith("WHATSAPP_BROADCAST") && a.TableName != "Partners")
                     .OrderByDescending(a => a.Timestamp)
                     .Take(limit)
                     .ToListAsync();
@@ -77,7 +77,7 @@ namespace VinayagaPlates.Api.Controllers
 
             try
             {
-                var count = await _whatsAppService.BroadcastToPartnerAsync(request.Message, request.EventType ?? "GENERAL");
+                var count = await _whatsAppService.BroadcastToPartnersAsync(request.Message, request.EventType ?? "GENERAL");
                 var response = ApiResponse<object>.Success(new { recipientsCount = count }, $"WhatsApp notification broadcasted to {count} partner(s).");
                 return StatusCode(response.StatusCode, response);
             }

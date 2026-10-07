@@ -71,7 +71,7 @@ namespace VinayagaPlates.Application.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Partner",
+                name: "Partners",
                 columns: table => new
                 {
                     PartnerId = table.Column<int>(type: "integer", nullable: false)
@@ -86,7 +86,7 @@ namespace VinayagaPlates.Application.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Partner", x => x.PartnerId);
+                    table.PrimaryKey("PK_Partners", x => x.PartnerId);
                 });
 
             migrationBuilder.CreateTable(
@@ -292,9 +292,9 @@ namespace VinayagaPlates.Application.Migrations
                 {
                     table.PrimaryKey("PK_PartnerLedgers", x => x.LedgerId);
                     table.ForeignKey(
-                        name: "FK_PartnerLedgers_Partner_PartnerId",
+                        name: "FK_PartnerLedgers_Partners_PartnerId",
                         column: x => x.PartnerId,
-                        principalTable: "Partner",
+                        principalTable: "Partners",
                         principalColumn: "PartnerId",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -691,7 +691,7 @@ namespace VinayagaPlates.Application.Migrations
                 name: "BusinessAccounts");
 
             migrationBuilder.DropTable(
-                name: "Partner");
+                name: "Partners");
 
             migrationBuilder.DropTable(
                 name: "Purchases");

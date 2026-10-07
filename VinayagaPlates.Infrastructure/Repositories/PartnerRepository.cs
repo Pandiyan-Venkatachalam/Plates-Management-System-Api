@@ -26,7 +26,7 @@ namespace VinayagaPlates.Infrastructure.Repositories
         public async Task CreatePartnerAsync(Partner partner, string createdBy)
         {
             partner.CreatedBy = createdBy ?? "SYSTEM";
-            await Db.Partner.AddAsync(partner);
+            await Db.Partners.AddAsync(partner);
             await Db.SaveChangesAsync();
         }
     }

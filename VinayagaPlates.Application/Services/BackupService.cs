@@ -24,7 +24,7 @@ namespace VinayagaPlates.Application.Services
                 {
                     Users = await _context.Users.AsNoTracking().ToListAsync(),
                     Roles = await _context.Roles.AsNoTracking().ToListAsync(),
-                    Partner = await _context.Partner.AsNoTracking().ToListAsync(),
+                    Partners = await _context.Partners.AsNoTracking().ToListAsync(),
                     BusinessAccounts = await _context.BusinessAccounts.AsNoTracking().ToListAsync(),
                     AccountTransactions = await _context.AccountTransactions.AsNoTracking().ToListAsync(),
                     PartnerLedgers = await _context.PartnerLedgers.AsNoTracking().ToListAsync(),
