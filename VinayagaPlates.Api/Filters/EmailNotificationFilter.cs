@@ -27,9 +27,12 @@ namespace VinayagaPlates.Api.Filters
             if (method != "POST" && method != "PUT" && method != "DELETE")
                 return;
 
-            // Ignore login/auth endpoints
-            if (request.Path.Value != null && request.Path.Value.Contains("auth", StringComparison.OrdinalIgnoreCase))
-                return;
+            // Ignore login/auth endpoints and WhatsApp broadcast endpoints
+            if (request.Path.Value != null && (
+                request.Path.Value.Contains("auth", StringComparison.OrdinalIgnoreCase) || 
+                request.Path.Value.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ||
+                request.Path.Value.Contains("broadcast", StringComparison.OrdinalIgnoreCase)
+            )) return;
 
             // Only care if the status is successful (2xx)
             if (context.HttpContext.Response.StatusCode >= 200 && context.HttpContext.Response.StatusCode < 300)
@@ -213,8 +216,17 @@ namespace VinayagaPlates.Api.Filters
             var sb = new StringBuilder();
             sb.Append("<ul style='list-style-type: none; padding: 0;'>");
             
+            var ignoredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+            { 
+                "CreatedBy", "CreatedAt", "UpdatedBy", "UpdatedAt", "IsDeleted", "IsActive",
+                "CategoryId", "VariantId", "UnitId", "ProductId", "CustomerId", "SupplierId", "BatchId", "PasswordHash"
+            };
+
             foreach (var prop in properties)
             {
+                // Skip system fields and internal foreign keys
+                if (ignoredFields.Contains(prop.Name)) continue;
+
                 // Skip collections and complex nested objects to keep email clean
                 if (prop.PropertyType.IsGenericType || prop.PropertyType.IsArray) continue;
                 if (prop.PropertyType.Namespace != null && prop.PropertyType.Namespace.StartsWith("VinayagaPlates.Domain")) continue;
