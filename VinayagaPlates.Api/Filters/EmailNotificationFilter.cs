@@ -50,6 +50,7 @@ namespace VinayagaPlates.Api.Filters
 
                 var actionDescription = $"A record in <b>{moduleName}</b> has been {action.ToLower()} in VPMS.";
                 string detailsHtml = "No additional details available.";
+                List<AccountTransaction> expenseTransactions = null;
                 
                 if (executedContext.Result is ObjectResult objectResult && objectResult.Value != null)
                 {
@@ -74,6 +75,16 @@ namespace VinayagaPlates.Api.Filters
                             if (moduleName.Equals("PartnerLedger", StringComparison.OrdinalIgnoreCase) && actionDescription.Contains("transaction", StringComparison.OrdinalIgnoreCase))
                             {
                                 detailsHtml = GenerateBeautifulPartnerTransactionHtml(dataObj, actionDescription, userName, GetIstTime());
+                            }
+                            else if (moduleName.Equals("Expense", StringComparison.OrdinalIgnoreCase) && dataObj is IEnumerable<AccountTransaction> txList)
+                            {
+                                expenseTransactions = txList.ToList();
+                                detailsHtml = "Generating expense details...";
+                            }
+                            else if (moduleName.Equals("Expense", StringComparison.OrdinalIgnoreCase) && dataObj is AccountTransaction tx)
+                            {
+                                expenseTransactions = new List<AccountTransaction> { tx };
+                                detailsHtml = "Generating expense details...";
                             }
                             else
                             {
@@ -162,8 +173,26 @@ namespace VinayagaPlates.Api.Filters
                             </p>
                         </div>";
 
+
+
+                        if (expenseTransactions != null && expenseTransactions.Any())
+                        {
+                            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                            var accountIds = expenseTransactions.Select(t => t.AccountId).Distinct().ToList();
+                            var accounts = await db.BusinessAccounts.Where(a => accountIds.Contains(a.AccountId)).ToListAsync();
+                            
+                            var accountNames = expenseTransactions.Select(t => {
+                                var acc = accounts.FirstOrDefault(a => a.AccountId == t.AccountId);
+                                return acc != null ? acc.AccountName : $"Account {t.AccountId}";
+                            }).Distinct().ToList();
+
+                            var totalAmount = expenseTransactions.Sum(t => t.Amount);
+                            var desc = expenseTransactions.First().Description;
+                            
+                            htmlBody = GenerateBeautifulExpenseHtml(desc, totalAmount, string.Join(", ", accountNames), actionDescription, userName, GetIstTime());
+                        }
                         // If it's a Sale, try to fetch the full rich object and build the beautiful template
-                        if (entityId.HasValue)
+                        else if (entityId.HasValue)
                         {
                             if (moduleName.Equals("Sales", StringComparison.OrdinalIgnoreCase) || (moduleName.Equals("Order", StringComparison.OrdinalIgnoreCase) && actionDescription.Contains("Sale")))
                             {
@@ -421,6 +450,38 @@ namespace VinayagaPlates.Api.Filters
                         </tr>
                     </tfoot>
                 </table>
+
+                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
+                <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
+                    <i>Thank you.<br><b>VPMS – Vinayaga Plates Management System</b></i>
+                </p>
+            </div>");
+
+            return sb.ToString();
+        }
+
+        private string GenerateBeautifulExpenseHtml(string description, decimal totalAmount, string debitedFrom, string actionDescription, string userName, string time)
+        {
+            var sb = new StringBuilder();
+            sb.Append($@"
+            <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
+                <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
+                    Hello Partner 👋
+                </h2>
+                <p style='font-size: 16px; color: #e74c3c;'><b>📋 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
+                
+                <h3 style='color: #34495e; margin-top: 20px;'>Action Details</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Action By:</b> {userName}</li>
+                    <li style='padding: 4px 0;'><b>Time:</b> {time}</li>
+                </ul>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>💸 Expense Details</h3>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li style='padding: 4px 0;'><b>Description:</b> {description}</li>
+                    <li style='padding: 4px 0;'><b>Total Amount:</b> ₹{totalAmount:N2}</li>
+                    <li style='padding: 4px 0;'><b>Debited From:</b> {debitedFrom}</li>
+                </ul>
 
                 <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
                 <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
