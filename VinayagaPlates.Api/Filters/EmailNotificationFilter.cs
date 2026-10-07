@@ -63,12 +63,14 @@ namespace VinayagaPlates.Api.Filters
                     }
                 }
 
+                var scopeFactory = context.HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
+
                 // Process email in the background so it doesn't delay the API response
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        using var scope = context.HttpContext.RequestServices.CreateScope();
+                        using var scope = scopeFactory.CreateScope();
                         var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
                         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
                         
