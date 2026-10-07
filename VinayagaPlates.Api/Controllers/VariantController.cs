@@ -106,7 +106,7 @@ namespace VinayagaPlates.Api.Controllers
 
             await _vpms.LogAuditAsync(username, "DELETE_VARIANT", "TB_PRODUCT_VARIANT", id.ToString(), vari.VariantName, null);
 
-            var response = ApiResponse<object>.Success(null, "Variant deleted successfully.");
+            var response = ApiResponse<object>.Success(vari, "Variant deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

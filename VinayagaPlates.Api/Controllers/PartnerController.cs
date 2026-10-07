@@ -87,7 +87,7 @@ namespace VinayagaPlates.Api.Controllers
             _partnerRepo.Delete(partner);
             await _partnerRepo.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(null, "Partner deleted successfully.");
+            var response = ApiResponse<object>.Success(partner, "Partner deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

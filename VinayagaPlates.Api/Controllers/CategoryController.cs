@@ -106,7 +106,7 @@ namespace VinayagaPlates.Api.Controllers
 
             await _vpms.LogAuditAsync(username, "DELETE_CATEGORY", "TB_PRODUCT_CATEGORY", id.ToString(), cat.CategoryName, null);
 
-            var response = ApiResponse<object>.Success(null, "Category deleted successfully.");
+            var response = ApiResponse<object>.Success(cat, "Category deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

@@ -166,7 +166,7 @@ namespace VinayagaPlates.Api.Controllers
             _batchRepo.Delete(batch);
             await _batchRepo.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(null, "Batch deleted successfully.");
+            var response = ApiResponse<object>.Success(batch, "Batch deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
 

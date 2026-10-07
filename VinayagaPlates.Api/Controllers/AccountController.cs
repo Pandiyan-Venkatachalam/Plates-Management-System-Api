@@ -88,7 +88,7 @@ namespace VinayagaPlates.Api.Controllers
             _accountRepo.Delete(acc);
             await _accountRepo.SaveChangesAsync();
 
-            return StatusCode(200, ApiResponse<string>.Success("Account deleted successfully.", "Account deleted successfully."));
+            return StatusCode(200, ApiResponse<object>.Success(acc, "Account deleted successfully."));
         }
 
         [HttpGet("transactions")]

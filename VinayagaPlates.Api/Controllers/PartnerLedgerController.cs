@@ -205,7 +205,7 @@ namespace VinayagaPlates.Api.Controllers
             await _ledgerRepo.SaveChangesAsync();
             await _db.SaveChangesAsync();
 
-            var response = ApiResponse<object>.Success(null, "Ledger entry deleted successfully.");
+            var response = ApiResponse<object>.Success(ledger, "Ledger entry deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }

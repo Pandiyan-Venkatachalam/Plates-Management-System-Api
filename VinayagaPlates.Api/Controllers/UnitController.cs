@@ -106,7 +106,7 @@ namespace VinayagaPlates.Api.Controllers
 
             await _vpms.LogAuditAsync(username, "DELETE_UNIT", "TB_PRODUCT_UNIT", id.ToString(), unit.UnitName, null);
 
-            var response = ApiResponse<object>.Success(null, "Unit deleted successfully.");
+            var response = ApiResponse<object>.Success(unit, "Unit deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
     }
