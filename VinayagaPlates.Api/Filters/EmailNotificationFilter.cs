@@ -125,7 +125,7 @@ namespace VinayagaPlates.Api.Filters
                             senderPass = config["EmailSettings:Users:Pandiyan:AppPassword"];
                             recipientEmails = config["EmailSettings:Users:Ranjith:Email"];
                         }
-                        else if (userName.Contains("Ranjith", StringComparison.OrdinalIgnoreCase))
+                        else if (userName.Contains("Ranjith", StringComparison.OrdinalIgnoreCase) || userName.Contains("Ranjith Arjunan", StringComparison.OrdinalIgnoreCase))
                         {
                             senderEmail = config["EmailSettings:Users:Ranjith:Email"];
                             senderPass = config["EmailSettings:Users:Ranjith:AppPassword"];
