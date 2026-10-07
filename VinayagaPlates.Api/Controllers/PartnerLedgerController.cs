@@ -116,7 +116,17 @@ namespace VinayagaPlates.Api.Controllers
                     req.AccountName,
                     User.Identity?.Name ?? "SYSTEM");
 
-                var response = ApiResponse<object>.Success(null, "Partner transaction recorded successfully.", 201);
+                var partner = await _db.Partners.FindAsync(req.PartnerId);
+                var details = new {
+                    Partner = partner?.PartnerName ?? "Unknown",
+                    TransactionType = req.TransactionType,
+                    Amount = req.Amount,
+                    Description = req.Description,
+                    PaymentMethod = req.AccountName,
+                    TransactionDate = DateTime.UtcNow
+                };
+
+                var response = ApiResponse<object>.Success(details, "Partner transaction recorded successfully.", 201);
                 return StatusCode(response.StatusCode, response);
             }
             catch (ArgumentException ex)

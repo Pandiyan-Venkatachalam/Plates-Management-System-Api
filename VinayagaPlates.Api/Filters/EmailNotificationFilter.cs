@@ -69,7 +69,14 @@ namespace VinayagaPlates.Api.Filters
                         var dataObj = dataProp.GetValue(responseValue);
                         if (dataObj != null)
                         {
-                            detailsHtml = GenerateHtmlFromObject(dataObj);
+                            if (moduleName.Equals("PartnerLedger", StringComparison.OrdinalIgnoreCase) && actionDescription.Contains("transaction", StringComparison.OrdinalIgnoreCase))
+                            {
+                                detailsHtml = GenerateBeautifulPartnerTransactionHtml(dataObj, actionDescription, userName, GetIstTime());
+                            }
+                            else
+                            {
+                                detailsHtml = GenerateHtmlFromObject(dataObj);
+                            }
                         }
                         else if (msgObj != null)
                         {
@@ -489,6 +496,79 @@ namespace VinayagaPlates.Api.Filters
             </div>");
 
             return sb.ToString();
+        }
+
+        private string GenerateBeautifulPartnerTransactionHtml(object dataObj, string actionDescription, string userName, string time)
+        {
+            var type = dataObj.GetType();
+            var partner = type.GetProperty("Partner")?.GetValue(dataObj)?.ToString() ?? "Unknown";
+            var transactionType = type.GetProperty("TransactionType")?.GetValue(dataObj)?.ToString() ?? "Unknown";
+            var amountStr = type.GetProperty("Amount")?.GetValue(dataObj)?.ToString() ?? "0.00";
+            var description = type.GetProperty("Description")?.GetValue(dataObj)?.ToString() ?? "Capital Investment";
+            var paymentMethod = type.GetProperty("PaymentMethod")?.GetValue(dataObj)?.ToString() ?? "Unknown";
+            var transactionDate = type.GetProperty("TransactionDate")?.GetValue(dataObj) as DateTime? ?? DateTime.UtcNow;
+
+            decimal amount = 0;
+            decimal.TryParse(amountStr, out amount);
+
+            string actionWord = transactionType.Equals("INVESTMENT", StringComparison.OrdinalIgnoreCase) ? "invested" : "withdrew";
+
+            return $@"
+            <div style='font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #ddd; border-radius: 8px;'>
+                <h2 style='color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;'>
+                    Hello Partners 👋
+                </h2>
+                <p style='font-size: 16px; color: #27ae60;'><b>💸 {actionDescription.Replace("<b>", "").Replace("</b>", "")}</b></p>
+
+                <p style='color: #7f8c8d; font-size: 14px;'>
+                    <b>Action By:</b> {userName}<br>
+                    <b>Time:</b> {time}
+                </p>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>📋 Transaction Details</h3>
+                <table style='width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;'>
+                    <tbody>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd; width: 40%;'><b>Partner</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>{partner}</b></td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>Transaction Type</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>{transactionType.ToUpper()}</b></td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>Amount</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd; color: #27ae60;'><b>₹{amount:N2}</b></td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>Description</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd;'>{description}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>Payment Method</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd;'>{paymentMethod}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>Transaction Date</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd;'>{transactionDate.ToString("dd-MMM-yyyy")}</td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #ddd;'><b>Status</b></td>
+                            <td style='padding: 8px; border: 1px solid #ddd; color: #2980b9;'><b>COMPLETED</b></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3 style='color: #34495e; margin-top: 20px;'>📝 Transaction Summary</h3>
+                <p style='background-color: #f9f9f9; padding: 10px; border-left: 4px solid #2980b9; font-size: 15px;'>
+                    <b>{partner} {actionWord} ₹{amount:N2} as a {description.ToLower()}.</b>
+                </p>
+
+                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0 15px;' />
+                <p style='font-size: 12px; color: #7f8c8d; text-align: center;'>
+                    <i>This transaction has been recorded in the Vinayaga Plates Management System.<br><b>Please do not reply to this email.</b></i>
+                </p>
+            </div>";
         }
 
         private string GetIstTime()
