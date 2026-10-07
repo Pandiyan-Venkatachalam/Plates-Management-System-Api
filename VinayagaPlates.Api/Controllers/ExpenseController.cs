@@ -78,11 +78,15 @@ namespace VinayagaPlates.Api.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteExpense(int id)
         {
-            var deleted = await _expenseRepo.DeleteExpenseAsync(id);
-            if (!deleted)
+            var expense = await _expenseRepo.GetExpenseByIdAsync(id);
+            if (expense == null)
                 return StatusCode(404, ApiResponse<string>.Fail("Expense not found.", 404));
 
-            return StatusCode(200, ApiResponse<string>.Success("Expense deleted successfully.", "Expense deleted successfully."));
+            var deleted = await _expenseRepo.DeleteExpenseAsync(id);
+            if (!deleted)
+                return StatusCode(404, ApiResponse<string>.Fail("Failed to delete expense.", 404));
+
+            return StatusCode(200, ApiResponse<object>.Success(expense, "Expense deleted successfully."));
         }
     }
 }
