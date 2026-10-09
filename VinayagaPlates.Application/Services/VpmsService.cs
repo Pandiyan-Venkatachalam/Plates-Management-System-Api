@@ -1129,6 +1129,21 @@ namespace VinayagaPlates.Application.Services
                     await _db.SaveChangesAsync();
                     
                     await transaction.CommitAsync();
+
+                    var allSalePayments = await _db.SalePayments.Where(p => p.SaleId == saleId).ToListAsync();
+                    var history = allSalePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+
+                    _ = NotifyPartnerAboutPaymentAsync(
+                        "Deleted", 
+                        "Sales Ledger", 
+                        sale.Customer?.CustomerName ?? "Unknown", 
+                        sale.SaleNumber,
+                        sale.TotalAmount,
+                        payment.Amount, 
+                        sale.TotalAmount - sale.PaidAmount,
+                        DateTime.UtcNow, 
+                        username,
+                        history);
                 }
                 catch
                 {
@@ -1329,6 +1344,21 @@ namespace VinayagaPlates.Application.Services
                     await _db.SaveChangesAsync();
 
                     await transaction.CommitAsync();
+
+                    var allPurchasePayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).ToListAsync();
+                    var history = allPurchasePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+
+                    _ = NotifyPartnerAboutPaymentAsync(
+                        "Deleted", 
+                        "Purchase Ledger", 
+                        purchase.Supplier?.SupplierName ?? "Unknown", 
+                        purchase.PurchaseNumber,
+                        purchase.TotalAmount,
+                        payment.Amount, 
+                        purchase.TotalAmount - purchase.PaidAmount,
+                        DateTime.UtcNow, 
+                        username,
+                        history);
                 }
                 catch
                 {
