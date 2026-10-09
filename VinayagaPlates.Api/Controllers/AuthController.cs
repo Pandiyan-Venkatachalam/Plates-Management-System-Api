@@ -72,6 +72,36 @@ namespace VinayagaPlates.Api.Controllers
             return StatusCode(response.StatusCode, response);
         }
 
+        [HttpPut("users/{id}")]
+        [Authorize(Policy = $"{RoleConstants.Admin}Policy")]
+        public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserRequest req)
+        {
+            var success = await _vpms.UpdateUserAsync(id, req, User.Identity?.Name ?? RoleConstants.Admin);
+            if (!success)
+            {
+                var fail = ApiResponse<string>.Fail("Username already exists, role is invalid, or user not found.", 400);
+                return StatusCode(fail.StatusCode, fail);
+            }
+
+            var response = ApiResponse<string>.Success("User updated successfully.", "User updated successfully.");
+            return StatusCode(response.StatusCode, response);
+        }
+
+        [HttpDelete("users/{id}")]
+        [Authorize(Policy = $"{RoleConstants.Admin}Policy")]
+        public async Task<IActionResult> DeleteUser(int id)
+        {
+            var success = await _vpms.DeleteUserAsync(id);
+            if (!success)
+            {
+                var fail = ApiResponse<string>.Fail("User not found or could not be deleted.", 400);
+                return StatusCode(fail.StatusCode, fail);
+            }
+
+            var response = ApiResponse<string>.Success("User deleted successfully.", "User deleted successfully.");
+            return StatusCode(response.StatusCode, response);
+        }
+
         [HttpGet("users")]
         [Authorize(Policy = $"{RoleConstants.Admin}Policy")]
         public async Task<IActionResult> GetAllUsers()

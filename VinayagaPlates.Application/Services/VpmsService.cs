@@ -23,6 +23,8 @@ namespace VinayagaPlates.Application.Services
         private readonly IOrderRepository _orderRepo;
         private readonly IPasswordHasher _hasher;
         private readonly ApplicationDbContext _db;
+        private readonly IEmailService _emailService;
+        private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
 
         public VpmsService(
             IUserRepository userRepo,
@@ -34,7 +36,9 @@ namespace VinayagaPlates.Application.Services
             IBatchRepository batchRepo,
             IOrderRepository orderRepo,
             IPasswordHasher hasher,
-            ApplicationDbContext db)
+            ApplicationDbContext db,
+            IEmailService emailService,
+            Microsoft.Extensions.Configuration.IConfiguration config)
         {
             _userRepo = userRepo;
             _productRepo = productRepo;
@@ -46,6 +50,8 @@ namespace VinayagaPlates.Application.Services
             _orderRepo = orderRepo;
             _hasher = hasher;
             _db = db;
+            _emailService = emailService;
+            _config = config;
         }
 
         // --- AUTH & SETUP SEED ---
@@ -189,6 +195,66 @@ namespace VinayagaPlates.Application.Services
             await _userRepo.AddUserRoleAsync(new UserRole { UserId = newUser.UserId, RoleId = role.RoleId });
             await _userRepo.SaveChangesAsync();
 
+            return true;
+        }
+
+        public async Task<bool> UpdateUserAsync(int userId, UpdateUserRequest req, string updatedBy)
+        {
+            var existingUser = await _userRepo.GetByIdAsync(userId);
+            if (existingUser == null) return false;
+
+            // Check if username is being changed and if it already exists
+            if (existingUser.Username != req.Username)
+            {
+                var usernameCheck = await _userRepo.GetByUsernameAsync(req.Username);
+                if (usernameCheck != null) return false;
+            }
+
+            var roleExists = await _userRepo.RoleExistsAsync(req.Role);
+            if (!roleExists) return false;
+
+            var role = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(_db.Roles, r => r.RoleName == req.Role);
+            if (role == null) return false;
+
+            existingUser.FullName = req.FullName;
+            existingUser.Username = req.Username;
+            existingUser.Email = req.Email;
+            existingUser.Phone = req.Phone;
+            existingUser.IsActive = req.IsActive;
+
+            // Update password if provided
+            if (!string.IsNullOrEmpty(req.Password))
+            {
+                existingUser.PasswordHash = _hasher.HashPassword(req.Password);
+            }
+
+            _userRepo.Update(existingUser);
+            await _userRepo.SaveChangesAsync();
+
+            // Handle role update
+            var existingUserRoles = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                _db.UserRoles.Where(ur => ur.UserId == userId)
+            );
+            
+            _db.UserRoles.RemoveRange(existingUserRoles);
+            await _userRepo.AddUserRoleAsync(new UserRole { UserId = userId, RoleId = role.RoleId });
+            await _userRepo.SaveChangesAsync();
+
+            return true;
+        }
+
+        public async Task<bool> DeleteUserAsync(int userId)
+        {
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null) return false;
+
+            var existingUserRoles = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                _db.UserRoles.Where(ur => ur.UserId == userId)
+            );
+            _db.UserRoles.RemoveRange(existingUserRoles);
+            
+            _db.Users.Remove(user);
+            await _userRepo.SaveChangesAsync();
             return true;
         }
 
@@ -873,8 +939,14 @@ namespace VinayagaPlates.Application.Services
                 try
                 {
                     // 1. Lock the sale to prevent concurrent over-collection
-                    var sale = await _db.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId);
+                    var sale = await _db.Sales.Include(s => s.Customer).FirstOrDefaultAsync(s => s.SaleId == saleId);
                     if (sale == null) throw new ArgumentException("Sale not found.");
+
+                    var currentPaidAmount = await _db.SalePayments.Where(p => p.SaleId == saleId).SumAsync(p => p.Amount);
+                    if (req.Amount > sale.TotalAmount - currentPaidAmount)
+                    {
+                        throw new ArgumentException($"Cannot collect more than the remaining balance (₹{sale.TotalAmount - currentPaidAmount:N2}).");
+                    }
 
                     // 2. Insert the Payment Collection record
                     var payment = new SalePayment
@@ -929,6 +1001,22 @@ namespace VinayagaPlates.Application.Services
                     await _db.SaveChangesAsync();
 
                     await transaction.CommitAsync();
+
+                    var allSalePayments = await _db.SalePayments.Where(p => p.SaleId == saleId).ToListAsync();
+                    var history = allSalePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+
+                    _ = NotifyPartnerAboutPaymentAsync(
+                        "Added", 
+                        "Sales Ledger", 
+                        sale.Customer?.CustomerName ?? "Unknown", 
+                        sale.SaleNumber,
+                        sale.TotalAmount,
+                        req.Amount, 
+                        sale.TotalAmount - sale.PaidAmount,
+                        DateTime.UtcNow, 
+                        username,
+                        history);
+
                     return payment;
                 }
                 catch
@@ -1065,8 +1153,14 @@ namespace VinayagaPlates.Application.Services
             {
                 try
                 {
-                    var purchase = await _db.Purchases.FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
+                    var purchase = await _db.Purchases.Include(p => p.Supplier).FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
                     if (purchase == null) throw new ArgumentException("Purchase not found.");
+
+                    var currentPaidAmount = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).SumAsync(p => p.Amount);
+                    if (req.Amount > purchase.TotalAmount - currentPaidAmount)
+                    {
+                        throw new ArgumentException($"Cannot collect more than the remaining balance (₹{purchase.TotalAmount - currentPaidAmount:N2}).");
+                    }
 
                     var payment = new PurchasePayment
                     {
@@ -1111,6 +1205,22 @@ namespace VinayagaPlates.Application.Services
                     await _db.SaveChangesAsync();
 
                     await transaction.CommitAsync();
+
+                    var allPurchasePayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).ToListAsync();
+                    var history = allPurchasePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+
+                    _ = NotifyPartnerAboutPaymentAsync(
+                        "Added", 
+                        "Purchases Ledger", 
+                        purchase.Supplier?.SupplierName ?? "Unknown", 
+                        purchase.PurchaseNumber,
+                        purchase.TotalAmount,
+                        req.Amount, 
+                        purchase.TotalAmount - purchase.PaidAmount,
+                        DateTime.UtcNow, 
+                        username,
+                        history);
+
                     return payment;
                 }
                 catch
@@ -1555,6 +1665,119 @@ namespace VinayagaPlates.Application.Services
 
             await LogAuditAsync(username, "CONVERT_ORDER_TO_SALE", "TB_ORDERS", order.OrderId.ToString(), order.OrderNo, $"Converted to Sale {sale.SaleNumber}");
             return sale;
+        }
+
+        private async Task NotifyPartnerAboutPaymentAsync(
+            string action, 
+            string ledgerType, 
+            string partnerName, 
+            string invoiceNumber,
+            decimal totalInvoiceAmount,
+            decimal paymentAmount, 
+            decimal remainingBalance,
+            DateTime date, 
+            string loggedInUser,
+            IEnumerable<(decimal Amount, DateTime Date, string CollectedBy, string PaymentMethod)> paymentHistory)
+        {
+            try
+            {
+                var settings = _config.GetSection("EmailSettings:Users");
+                var pandiyanEmail = settings["Pandiyan:Email"];
+                var pandiyanPass = settings["Pandiyan:AppPassword"];
+                var ranjithEmail = settings["Ranjith:Email"];
+                var ranjithPass = settings["Ranjith:AppPassword"];
+
+                string senderEmail, senderPass, receiverEmail;
+
+                // If logged in user is Ranjith, notify Pandiyan. Otherwise notify Ranjith.
+                if (loggedInUser.Equals("Ranjith", StringComparison.OrdinalIgnoreCase))
+                {
+                    senderEmail = ranjithEmail;
+                    senderPass = ranjithPass;
+                    receiverEmail = pandiyanEmail;
+                }
+                else
+                {
+                    senderEmail = pandiyanEmail;
+                    senderPass = pandiyanPass;
+                    receiverEmail = ranjithEmail;
+                }
+
+                if (string.IsNullOrEmpty(senderEmail) || string.IsNullOrEmpty(senderPass) || string.IsNullOrEmpty(receiverEmail))
+                {
+                    return; // Missing config
+                }
+
+                string historyRows = "";
+                if (paymentHistory != null)
+                {
+                    foreach(var p in paymentHistory.OrderByDescending(x => x.Date))
+                    {
+                        historyRows += $@"
+                        <tr>
+                            <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{p.Date:dd-MMM-yyyy}</td>
+                            <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{p.CollectedBy}</td>
+                            <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{p.PaymentMethod}</td>
+                            <td style='padding: 8px; border-bottom: 1px solid #ddd; color: green;'>₹{p.Amount:N2}</td>
+                        </tr>";
+                    }
+                }
+
+                string subject = $"VPMS Notification: Payment {action} in {ledgerType}";
+                string htmlBody = $@"
+                    <div style='font-family: Arial, sans-serif; padding: 20px; color: #333;'>
+                        <p style='font-size: 16px; margin-bottom: 20px;'>Hello Partner,</p>
+                        <h2 style='color: #004085; margin-top: 0;'>VPMS Payment Notification</h2>
+                        <p><strong>{loggedInUser}</strong> has {action.ToLower()} a payment in the {ledgerType}.</p>
+                        
+                        <table style='width: 100%; max-width: 450px; border-collapse: collapse; margin-top: 15px;'>
+                            <tr>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>{(ledgerType == "Sales Ledger" ? "Customer" : "Supplier")}:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{partnerName}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Invoice Number:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{invoiceNumber}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Total Amount:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'>₹{totalInvoiceAmount:N2}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Paid Amount:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: green;'>₹{paymentAmount:N2}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Remaining Balance:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: red;'>₹{remainingBalance:N2}</td>
+                            </tr>
+                        </table>
+
+                        <h3 style='color: #004085; margin-top: 30px;'>Payment History for {partnerName}</h3>
+                        <table style='width: 100%; max-width: 600px; border-collapse: collapse; margin-top: 10px; font-size: 14px;'>
+                            <thead>
+                                <tr style='background-color: #f1f5f9;'>
+                                    <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Date</th>
+                                    <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Collected By</th>
+                                    <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Method</th>
+                                    <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {historyRows}
+                            </tbody>
+                        </table>
+
+                        <p style='margin-top: 20px; font-size: 12px; color: #777;'>Automated message from Vinayaga Plates Management System.</p>
+                    </div>
+                ";
+
+                await _emailService.SendEmailAsync(senderEmail, senderPass, receiverEmail, subject, htmlBody);
+            }
+            catch
+            {
+                // Ignore email errors to not fail the main transaction
+            }
         }
     }
 }

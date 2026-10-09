@@ -13,6 +13,15 @@ namespace VinayagaPlates.Contracts.DTOs
         string Password, 
         string Role);
 
+    public record UpdateUserRequest(
+        string FullName,
+        string Username,
+        string Email,
+        string Phone,
+        string? Password, // optional password update
+        string Role,
+        bool IsActive);
+
     public record AuthResponse(
         string Token, 
         string FullName, 
