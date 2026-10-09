@@ -182,5 +182,73 @@ namespace VinayagaPlates.Api.Controllers
             var response = ApiResponse<object>.Success(details, "Purchase deleted successfully.");
             return StatusCode(response.StatusCode, response);
         }
+
+        [HttpGet("{id}/payments")]
+        public async Task<IActionResult> GetPayments(int id)
+        {
+            var payments = await _vpms.GetPurchasePaymentsAsync(id);
+            var response = ApiResponse<IEnumerable<object>>.Success(payments.Select(p => new
+            {
+                p.PaymentId,
+                p.Amount,
+                AccountName = p.Account?.AccountName,
+                p.PaymentMethod,
+                p.Notes,
+                p.CreatedBy,
+                p.CreatedAt
+            }), "Purchase payments retrieved successfully.");
+            return StatusCode(response.StatusCode, response);
+        }
+
+        [HttpPost("{id}/payments")]
+        public async Task<IActionResult> AddPayment(int id, [FromBody] PurchasePaymentRequest req)
+        {
+            try
+            {
+                var username = User.Identity?.Name ?? "system";
+                var payment = await _vpms.AddPurchasePaymentAsync(id, req, username);
+                var response = ApiResponse<object>.Success(new { payment.PaymentId, payment.Amount }, "Payment recorded successfully.");
+                return StatusCode(response.StatusCode, response);
+            }
+            catch (Exception ex)
+            {
+                var err = ApiResponse<object>.Fail(ex.Message, 400);
+                return StatusCode(err.StatusCode, err);
+            }
+        }
+
+        [HttpPost("{id}/refunds")]
+        public async Task<IActionResult> AddRefund(int id, [FromBody] PurchaseRefundRequest req)
+        {
+            try
+            {
+                var username = User.Identity?.Name ?? "system";
+                await _vpms.AddPurchaseRefundAsync(id, req, username);
+                var response = ApiResponse<object>.Success(null, "Refund recorded successfully.");
+                return StatusCode(response.StatusCode, response);
+            }
+            catch (Exception ex)
+            {
+                var err = ApiResponse<object>.Fail(ex.Message, 400);
+                return StatusCode(err.StatusCode, err);
+            }
+        }
+
+        [HttpDelete("{id}/payments/{paymentId}")]
+        public async Task<IActionResult> DeletePayment(int id, int paymentId)
+        {
+            try
+            {
+                var username = User.Identity?.Name ?? "system";
+                await _vpms.DeletePurchasePaymentAsync(id, paymentId, username);
+                var response = ApiResponse<object>.Success(null, "Payment deleted successfully.");
+                return StatusCode(response.StatusCode, response);
+            }
+            catch (Exception ex)
+            {
+                var err = ApiResponse<object>.Fail(ex.Message, 400);
+                return StatusCode(err.StatusCode, err);
+            }
+        }
     }
 }

@@ -46,6 +46,11 @@ namespace VinayagaPlates.Tests
             await db.Suppliers.AddAsync(supplier);
             await db.Locations.AddAsync(location);
             await db.BusinessAccounts.AddAsync(account);
+
+
+            var tx = new AccountTransaction { TransactionId = 1, AccountId = 1, TransactionType = "CREDIT", Amount = 100000.00m, Description = "Initial Investment", CreatedAt = DateTime.UtcNow, ReferenceType = "SYSTEM", ReferenceId = "SYS", CreatedBy = "SYSTEM" };
+            await db.AccountTransactions.AddAsync(tx);
+            
             await db.SaveChangesAsync();
         }
 
@@ -61,6 +66,7 @@ namespace VinayagaPlates.Tests
             public void Delete(Purchase entity) { }
             public Task<IEnumerable<Purchase>> GetAllAsync() => Task.FromResult(Enumerable.Empty<Purchase>());
             public Task<Purchase> GetByIdAsync(int id) => Task.FromResult<Purchase>(null);
+            public Task<Purchase> GetPurchaseWithDetailsByIdAsync(int id) => Task.FromResult<Purchase>(null);
             public Task<IEnumerable<Supplier>> GetSuppliersAsync() => Task.FromResult(Enumerable.Empty<Supplier>());
             public Task AddSupplierAsync(Supplier supplier) => Task.CompletedTask;
             public Task<IEnumerable<Purchase>> GetPurchasesWithDetailsAsync() => Task.FromResult(Enumerable.Empty<Purchase>());
@@ -81,9 +87,27 @@ namespace VinayagaPlates.Tests
             public Task<IEnumerable<BusinessAccount>> GetAllAsync() => Task.FromResult(Enumerable.Empty<BusinessAccount>());
             public Task<BusinessAccount> GetByIdAsync(int id) => Task.FromResult<BusinessAccount>(null);
             public Task SaveChangesAsync() => _db.SaveChangesAsync();
-            public Task<IEnumerable<AccountTransaction>> GetTransactionsAsync() => Task.FromResult(Enumerable.Empty<AccountTransaction>());
+            public async Task<IEnumerable<AccountTransaction>> GetTransactionsAsync() => await _db.AccountTransactions.ToListAsync();
             public Task AddAuditLogAsync(AuditLog log) => Task.CompletedTask;
             public Task<IEnumerable<AuditLog>> GetAuditLogsAsync() => Task.FromResult(Enumerable.Empty<AuditLog>());
+        }
+
+        private class MockBatchRepository : VinayagaPlates.Application.Repositories.IBatchRepository
+        {
+            private readonly ApplicationDbContext _db;
+            public MockBatchRepository(ApplicationDbContext db) => _db = db;
+            public async Task AddBatchAsync(InventoryBatch batch) => await _db.InventoryBatches.AddAsync(batch);
+            public void UpdateBatch(InventoryBatch batch) { }
+            public Task<InventoryBatch> GetBatchByIdAsync(int id) => Task.FromResult<InventoryBatch>(null);
+            public Task<IEnumerable<InventoryBatch>> GetBatchesAsync() => Task.FromResult(Enumerable.Empty<InventoryBatch>());
+            public async Task SaveChangesAsync() => await _db.SaveChangesAsync();
+            public Task AddAsync(InventoryBatch entity) => Task.CompletedTask;
+            public void Update(InventoryBatch entity) { }
+            public void Delete(InventoryBatch entity) { }
+            public Task<IEnumerable<InventoryBatch>> GetAllAsync() => Task.FromResult(Enumerable.Empty<InventoryBatch>());
+            public Task<InventoryBatch> GetByIdAsync(int id) => Task.FromResult<InventoryBatch>(null);
+            public async Task AddMovementAsync(InventoryMovement movement) => await _db.InventoryMovements.AddAsync(movement);
+            public Task<IEnumerable<InventoryBatch>> GetAvailableBatchesForProductAsync(int productId) => Task.FromResult(Enumerable.Empty<InventoryBatch>());
         }
 
         [Fact]
@@ -96,8 +120,9 @@ namespace VinayagaPlates.Tests
                 // Setup repositories and service
                 var purchaseRepo = new MockPurchaseRepository(db);
                 var accountRepo = new MockAccountRepository(db);
+                var batchRepo = new MockBatchRepository(db);
                 var service = new VpmsService(
-                    null, null, purchaseRepo, null, null, accountRepo, null, db);
+                    null, null, purchaseRepo, null, null, accountRepo, batchRepo, null, null, db);
 
                 // Purchase 100 of P1 @ ₹10.00 and 300 of P2 @ ₹20.00 (Total Qty = 400)
                 // Expense = ₹400.00 (Quantity Based) -> Expect ₹1.00 allocated per unit
@@ -149,8 +174,9 @@ namespace VinayagaPlates.Tests
 
                 var purchaseRepo = new MockPurchaseRepository(db);
                 var accountRepo = new MockAccountRepository(db);
+                var batchRepo = new MockBatchRepository(db);
                 var service = new VpmsService(
-                    null, null, purchaseRepo, null, null, accountRepo, null, db);
+                    null, null, purchaseRepo, null, null, accountRepo, batchRepo, null, null, db);
 
                 // P1 = 100 units @ ₹10 = ₹1,000
                 // P2 = 100 units @ ₹30 = ₹3,000

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VinayagaPlates.Application;
@@ -11,9 +12,11 @@ using VinayagaPlates.Application;
 namespace VinayagaPlates.Application.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261009070102_AddSalePaymentTable")]
+    partial class AddSalePaymentTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1073,50 +1076,6 @@ namespace VinayagaPlates.Application.Migrations
                     b.ToTable("PurchaseExpenseAllocations");
                 });
 
-            modelBuilder.Entity("VinayagaPlates.Domain.Entities.PurchasePayment", b =>
-                {
-                    b.Property<int>("PaymentId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PaymentId"));
-
-                    b.Property<int>("AccountId")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("PaymentMethod")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<int>("PurchaseId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("PaymentId");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("PurchaseId");
-
-                    b.ToTable("PurchasePayments");
-                });
-
             modelBuilder.Entity("VinayagaPlates.Domain.Entities.Role", b =>
                 {
                     b.Property<int>("RoleId")
@@ -1784,25 +1743,6 @@ namespace VinayagaPlates.Application.Migrations
                     b.Navigation("PurchaseDetail");
 
                     b.Navigation("PurchaseExpense");
-                });
-
-            modelBuilder.Entity("VinayagaPlates.Domain.Entities.PurchasePayment", b =>
-                {
-                    b.HasOne("VinayagaPlates.Domain.Entities.BusinessAccount", "Account")
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("VinayagaPlates.Domain.Entities.Purchase", "Purchase")
-                        .WithMany()
-                        .HasForeignKey("PurchaseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Account");
-
-                    b.Navigation("Purchase");
                 });
 
             modelBuilder.Entity("VinayagaPlates.Domain.Entities.RolePermission", b =>

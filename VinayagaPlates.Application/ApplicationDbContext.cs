@@ -34,9 +34,11 @@ namespace VinayagaPlates.Application
 
         public DbSet<Purchase> Purchases { get; set; }
         public DbSet<PurchaseDetail> PurchaseDetails { get; set; }
+        public DbSet<PurchasePayment> PurchasePayments { get; set; }
 
         public DbSet<Sale> Sales { get; set; }
         public DbSet<SaleDetail> SaleDetails { get; set; }
+        public DbSet<SalePayment> SalePayments { get; set; }
 
         public DbSet<Location> Locations { get; set; }
         public DbSet<Order> Orders { get; set; }
@@ -89,6 +91,7 @@ namespace VinayagaPlates.Application
             modelBuilder.Entity<InventoryMovement>().HasKey(im => im.MovementId);
             modelBuilder.Entity<PurchaseDetail>().HasKey(pd => pd.PurchaseDetailId);
             modelBuilder.Entity<SaleDetail>().HasKey(sd => sd.SaleDetailId);
+            modelBuilder.Entity<SalePayment>().HasKey(sp => sp.PaymentId);
             modelBuilder.Entity<AuditLog>().HasKey(al => al.AuditId);
             modelBuilder.Entity<CustomerPricing>().HasKey(cp => cp.CustomerPricingId);
             modelBuilder.Entity<BusinessAccount>().HasKey(ba => ba.AccountId);
@@ -304,6 +307,18 @@ namespace VinayagaPlates.Application
                 .HasOne(pea => pea.PurchaseDetail)
                 .WithMany()
                 .HasForeignKey(pea => pea.PurchaseDetailId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PurchasePayment>()
+                .HasOne(pp => pp.Purchase)
+                .WithMany()
+                .HasForeignKey(pp => pp.PurchaseId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PurchasePayment>()
+                .HasOne(pp => pp.Account)
+                .WithMany()
+                .HasForeignKey(pp => pp.AccountId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             // Orders and Reservations

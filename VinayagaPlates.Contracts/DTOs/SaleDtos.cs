@@ -23,4 +23,16 @@ namespace VinayagaPlates.Contracts.DTOs
         string Status,
         decimal Adjustment = 0,
         string? PaymentMethodAccountName = null);
+
+    public record SalePaymentRequest(
+        decimal Amount,
+        int AccountId,
+        string PaymentMethod,
+        string Notes = "");
+
+    public record SaleRefundRequest(
+        decimal Amount,
+        int AccountId,
+        string PaymentMethod,
+        string Notes = "");
 }

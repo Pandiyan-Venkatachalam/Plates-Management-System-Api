@@ -194,13 +194,28 @@ namespace VinayagaPlates.Api.Controllers
                     _db.SaleDetails.RemoveRange(sale.Details);
                     await _db.SaveChangesAsync();
 
-                    // 3. Remove linked account transactions
-                    var linkedTxs = await _db.AccountTransactions
+                    // 3. Remove linked account transactions (Legacy SALE)
+                    var legacyTxs = await _db.AccountTransactions
                         .Where(t => t.ReferenceType == "SALE" && (t.ReferenceId == id.ToString() || t.ReferenceId == sale.SaleNumber))
                         .ToListAsync();
-                    if (linkedTxs.Any())
+                    if (legacyTxs.Any())
                     {
-                        _db.AccountTransactions.RemoveRange(linkedTxs);
+                        _db.AccountTransactions.RemoveRange(legacyTxs);
+                    }
+
+                    // 3b. Remove new SalePayments and their linked AccountTransactions
+                    var payments = await _db.SalePayments.Where(p => p.SaleId == id).ToListAsync();
+                    if (payments.Any())
+                    {
+                        var paymentIds = payments.Select(p => p.PaymentId.ToString()).ToList();
+                        var paymentTxs = await _db.AccountTransactions
+                            .Where(t => (t.ReferenceType == "SALE_PAYMENT" || t.ReferenceType == "SALE_REFUND") && paymentIds.Contains(t.ReferenceId))
+                            .ToListAsync();
+                        
+                        if (paymentTxs.Any())
+                            _db.AccountTransactions.RemoveRange(paymentTxs);
+                            
+                        _db.SalePayments.RemoveRange(payments);
                     }
 
                     // 4. Remove parent sale record
@@ -227,6 +242,84 @@ namespace VinayagaPlates.Api.Controllers
                     await transaction.RollbackAsync();
                     return StatusCode(500, ApiResponse<object>.Fail($"Error deleting sale: {ex.Message}", 500));
                 }
+            }
+        }
+
+        // --- SALE PAYMENTS API ---
+
+        [HttpGet("{id}/payments")]
+        public async Task<IActionResult> GetSalePayments(int id)
+        {
+            var payments = await _db.SalePayments
+                .Include(p => p.Account)
+                .Where(p => p.SaleId == id)
+                .OrderBy(p => p.CreatedAt)
+                .Select(p => new {
+                    p.PaymentId,
+                    p.SaleId,
+                    p.Amount,
+                    p.AccountId,
+                    AccountName = p.Account.AccountName,
+                    p.PaymentMethod,
+                    p.Notes,
+                    p.CreatedBy,
+                    p.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(ApiResponse<object>.Success(payments, "Payments retrieved successfully."));
+        }
+
+        [HttpPost("{id}/payments")]
+        public async Task<IActionResult> AddPayment(int id, [FromBody] SalePaymentRequest req)
+        {
+            try
+            {
+                if (req.Amount <= 0) return BadRequest(ApiResponse<object>.Fail("Amount must be greater than zero.", 400));
+                
+                var username = User.Identity?.Name ?? "SYSTEM";
+                var payment = await _vpms.AddSalePaymentAsync(id, req, username);
+                
+                var response = ApiResponse<object>.Success(new { payment.PaymentId }, "Payment added successfully.");
+                return StatusCode(201, response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.Fail(ex.Message, 400));
+            }
+        }
+
+        [HttpPost("{id}/refunds")]
+        public async Task<IActionResult> AddRefund(int id, [FromBody] SaleRefundRequest req)
+        {
+            try
+            {
+                if (req.Amount <= 0) return BadRequest(ApiResponse<object>.Fail("Amount must be greater than zero.", 400));
+                
+                var username = User.Identity?.Name ?? "SYSTEM";
+                await _vpms.AddSaleRefundAsync(id, req, username);
+                
+                return Ok(ApiResponse<object>.Success(null, "Refund recorded successfully."));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.Fail(ex.Message, 400));
+            }
+        }
+
+        [HttpDelete("{id}/payments/{paymentId}")]
+        public async Task<IActionResult> DeletePayment(int id, int paymentId)
+        {
+            try
+            {
+                var username = User.Identity?.Name ?? "SYSTEM";
+                await _vpms.DeleteSalePaymentAsync(id, paymentId, username);
+                
+                return Ok(ApiResponse<object>.Success(null, "Payment deleted successfully."));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.Fail(ex.Message, 400));
             }
         }
     }

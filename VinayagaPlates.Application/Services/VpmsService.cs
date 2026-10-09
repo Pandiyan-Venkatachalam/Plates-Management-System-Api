@@ -502,13 +502,26 @@ namespace VinayagaPlates.Application.Services
                                 throw new InvalidOperationException($"Insufficient funds in {cashAcc.AccountName}. Available Cash In-Hand is ₹{available:N2}, but attempted to spend ₹{req.PaidAmount:N2}. Please record a partner investment first.");
                             }
 
+                            var payment = new PurchasePayment
+                            {
+                                PurchaseId = purchase.PurchaseId,
+                                Amount = req.PaidAmount,
+                                AccountId = cashAcc.AccountId,
+                                PaymentMethod = "CASH",
+                                Notes = "Initial payment upon purchase creation",
+                                CreatedBy = username,
+                                CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
+                            };
+                            _db.PurchasePayments.Add(payment);
+                            await _db.SaveChangesAsync();
+
                             await _accountRepo.AddTransactionAsync(new AccountTransaction
                             {
                                 AccountId = cashAcc.AccountId,
                                 TransactionType = "DEBIT",
                                 Amount = req.PaidAmount,
                                 ReferenceType = "PURCHASE",
-                                ReferenceId = purchase.PurchaseId.ToString(),
+                                ReferenceId = payment.PaymentId.ToString(),
                                 Description = $"Paid for Purchase {purchase.PurchaseNumber}",
                                 CreatedBy = username,
                                 CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
@@ -604,13 +617,26 @@ namespace VinayagaPlates.Application.Services
             var cashAcc = await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName);
             if (cashAcc != null && req.PaidAmount > 0)
             {
+                var payment = new SalePayment
+                {
+                    SaleId = sale.SaleId,
+                    Amount = req.PaidAmount,
+                    AccountId = cashAcc.AccountId,
+                    PaymentMethod = "CASH",
+                    Notes = "Initial payment upon sale creation",
+                    CreatedBy = username,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.SalePayments.Add(payment);
+                await _db.SaveChangesAsync();
+
                 await _accountRepo.AddTransactionAsync(new AccountTransaction
                 {
                     AccountId = cashAcc.AccountId,
                     TransactionType = "CREDIT",
                     Amount = req.PaidAmount,
-                    ReferenceType = "SALE",
-                    ReferenceId = sale.SaleId.ToString(),
+                    ReferenceType = "SALE_PAYMENT",
+                    ReferenceId = payment.PaymentId.ToString(),
                     Description = $"Collected payment for Sale {sale.SaleNumber}",
                     CreatedBy = username,
                     CreatedAt = DateTime.UtcNow
@@ -806,63 +832,395 @@ namespace VinayagaPlates.Application.Services
                         }
                     }
 
-                    // 4. Update sale record fields
+                    // 4. Recalculate PaidAmount from actual payments
+                    var totalPaid = await _db.SalePayments.Where(p => p.SaleId == sale.SaleId).SumAsync(p => p.Amount);
+                    var totalRefunded = await _db.AccountTransactions
+                                            .Where(t => t.ReferenceType == "SALE_REFUND" && t.ReferenceId == sale.SaleId.ToString() && t.TransactionType == "DEBIT")
+                                            .SumAsync(t => t.Amount);
+                    var actualPaid = totalPaid - totalRefunded;
+
+                    // 5. Update sale record fields
                     sale.CustomerId = req.CustomerId;
                     sale.SaleDate = req.SaleDate;
                     sale.TotalAmount = req.TotalAmount;
-                    sale.PaidAmount = req.PaidAmount;
-                    sale.PaymentStatus = req.PaymentStatus;
+                    sale.PaidAmount = actualPaid;
+                    sale.PaymentStatus = actualPaid >= req.TotalAmount ? "PAID" : actualPaid > 0 ? "PARTIAL" : "UNPAID";
                     sale.Status = req.Status;
                     sale.UpdatedBy = username;
                     sale.UpdatedAt = DateTime.UtcNow;
 
-                    // 5. Synchronize linked AccountTransaction
-                    var linkedTx = await _db.AccountTransactions
-                        .FirstOrDefaultAsync(t => t.ReferenceType == "SALE" && (t.ReferenceId == id.ToString() || t.ReferenceId == sale.SaleNumber));
-
-                    var targetAcc = !string.IsNullOrWhiteSpace(req.PaymentMethodAccountName)
-                        ? await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName)
-                        : null;
-
-                    if (req.PaidAmount > 0)
-                    {
-                        if (linkedTx != null)
-                        {
-                            linkedTx.Amount = req.PaidAmount;
-                            if (targetAcc != null)
-                            {
-                                linkedTx.AccountId = targetAcc.AccountId;
-                            }
-                            linkedTx.CreatedAt = req.SaleDate != default ? req.SaleDate : DateTime.UtcNow;
-                            linkedTx.Description = $"Collected payment for Sale {sale.SaleNumber}";
-                            _db.AccountTransactions.Update(linkedTx);
-                        }
-                        else if (targetAcc != null)
-                        {
-                            await _accountRepo.AddTransactionAsync(new AccountTransaction
-                            {
-                                AccountId = targetAcc.AccountId,
-                                TransactionType = "CREDIT",
-                                Amount = req.PaidAmount,
-                                ReferenceType = "SALE",
-                                ReferenceId = sale.SaleId.ToString(),
-                                Description = $"Collected payment for Sale {sale.SaleNumber}",
-                                CreatedBy = username,
-                                CreatedAt = req.SaleDate != default ? req.SaleDate : DateTime.UtcNow
-                            });
-                        }
-                    }
-                    else if (linkedTx != null)
-                    {
-                        _db.AccountTransactions.Remove(linkedTx);
-                    }
-
+                    // 6. We NO LONGER update AccountTransactions here. 
+                    // Payments are now strictly managed via AddSalePaymentAsync and DeleteSalePaymentAsync.
+                    
                     await _db.SaveChangesAsync();
                     await transaction.CommitAsync();
 
                     await LogAuditAsync(username, "SALE_UPDATE", "TB_SALES", id.ToString(), null, $"Sale {sale.SaleNumber} updated.");
                 }
                 catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+        }
+
+        // --- SALE PAYMENTS (NEW ARCHITECTURE) ---
+        public async Task<SalePayment> AddSalePaymentAsync(int saleId, SalePaymentRequest req, string username)
+        {
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    // 1. Lock the sale to prevent concurrent over-collection
+                    var sale = await _db.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId);
+                    if (sale == null) throw new ArgumentException("Sale not found.");
+
+                    // 2. Insert the Payment Collection record
+                    var payment = new SalePayment
+                    {
+                        SaleId = saleId,
+                        Amount = req.Amount,
+                        AccountId = req.AccountId,
+                        PaymentMethod = req.PaymentMethod,
+                        Notes = req.Notes,
+                        CreatedBy = username,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.SalePayments.Add(payment);
+                    await _db.SaveChangesAsync(); // save to get PaymentId
+
+                    // 3. Create Corresponding Account Transaction
+                    var account = await _db.BusinessAccounts.FindAsync(req.AccountId);
+                    if (account != null)
+                    {
+                        await _accountRepo.AddTransactionAsync(new AccountTransaction
+                        {
+                            AccountId = req.AccountId,
+                            TransactionType = "CREDIT",
+                            Amount = req.Amount,
+                            ReferenceType = "SALE_PAYMENT",
+                            ReferenceId = payment.PaymentId.ToString(),
+                            Description = $"Payment for Sale {sale.SaleNumber} via {req.PaymentMethod}",
+                            CreatedBy = username,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    // 4. Recalculate Sale.PaidAmount from Source of Truth (SalePayments - Refunds, or simply sum of AccountTransactions)
+                    var allPayments = await _db.SalePayments.Where(p => p.SaleId == saleId).SumAsync(p => p.Amount);
+                    sale.PaidAmount = allPayments;
+
+                    if (sale.PaidAmount >= sale.TotalAmount)
+                    {
+                        sale.PaymentStatus = "PAID";
+                        sale.Status = "COMPLETED";
+                    }
+                    else if (sale.PaidAmount > 0)
+                    {
+                        sale.PaymentStatus = "PARTIAL";
+                    }
+                    else
+                    {
+                        sale.PaymentStatus = "UNPAID";
+                    }
+
+                    _db.Sales.Update(sale);
+                    await _db.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+                    return payment;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+        }
+
+        public async Task AddSaleRefundAsync(int saleId, SaleRefundRequest req, string username)
+        {
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    var sale = await _db.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId);
+                    if (sale == null) throw new ArgumentException("Sale not found.");
+
+                    // Insert Negative Payment Collection to track the refund
+                    var refund = new SalePayment
+                    {
+                        SaleId = saleId,
+                        Amount = -req.Amount, // Negative to reduce total paid
+                        AccountId = req.AccountId,
+                        PaymentMethod = req.PaymentMethod,
+                        Notes = $"REFUND: {req.Notes}",
+                        CreatedBy = username,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.SalePayments.Add(refund);
+                    await _db.SaveChangesAsync();
+
+                    // Create Debit Account Transaction
+                    var account = await _db.BusinessAccounts.FindAsync(req.AccountId);
+                    if (account != null)
+                    {
+                        await _accountRepo.AddTransactionAsync(new AccountTransaction
+                        {
+                            AccountId = req.AccountId,
+                            TransactionType = "DEBIT",
+                            Amount = req.Amount, // Absolute amount for DEBIT
+                            ReferenceType = "SALE_REFUND",
+                            ReferenceId = refund.PaymentId.ToString(),
+                            Description = $"Refund for Sale {sale.SaleNumber} via {req.PaymentMethod}",
+                            CreatedBy = username,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    // Recalculate
+                    var allPayments = await _db.SalePayments.Where(p => p.SaleId == saleId).SumAsync(p => p.Amount);
+                    sale.PaidAmount = allPayments;
+                    
+                    if (sale.PaidAmount >= sale.TotalAmount)
+                        sale.PaymentStatus = "PAID";
+                    else if (sale.PaidAmount > 0)
+                        sale.PaymentStatus = "PARTIAL";
+                    else
+                        sale.PaymentStatus = "UNPAID";
+
+                    _db.Sales.Update(sale);
+                    await _db.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+        }
+
+        public async Task DeleteSalePaymentAsync(int saleId, int paymentId, string username)
+        {
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    var payment = await _db.SalePayments.FirstOrDefaultAsync(p => p.PaymentId == paymentId && p.SaleId == saleId);
+                    if (payment == null) throw new ArgumentException("Payment not found.");
+
+                    var sale = await _db.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId);
+                    if (sale == null) throw new ArgumentException("Sale not found.");
+
+                    // Remove linked AccountTransaction
+                    var linkedTx = await _db.AccountTransactions.FirstOrDefaultAsync(t => 
+                        (t.ReferenceType == "SALE_PAYMENT" || t.ReferenceType == "SALE_REFUND") && t.ReferenceId == paymentId.ToString());
+                    
+                    if (linkedTx != null)
+                    {
+                        _db.AccountTransactions.Remove(linkedTx);
+                    }
+
+                    _db.SalePayments.Remove(payment);
+                    await _db.SaveChangesAsync();
+
+                    // Recalculate Sale.PaidAmount
+                    var allPayments = await _db.SalePayments.Where(p => p.SaleId == saleId).SumAsync(p => p.Amount);
+                    sale.PaidAmount = allPayments;
+                    
+                    if (sale.PaidAmount >= sale.TotalAmount)
+                        sale.PaymentStatus = "PAID";
+                    else if (sale.PaidAmount > 0)
+                        sale.PaymentStatus = "PARTIAL";
+                    else
+                        sale.PaymentStatus = "UNPAID";
+
+                    _db.Sales.Update(sale);
+                    await _db.SaveChangesAsync();
+                    
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+        }
+
+        public async Task<List<PurchasePayment>> GetPurchasePaymentsAsync(int purchaseId)
+        {
+            return await _db.PurchasePayments
+                .Include(p => p.Account)
+                .Where(p => p.PurchaseId == purchaseId)
+                .OrderBy(p => p.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<PurchasePayment> AddPurchasePaymentAsync(int purchaseId, PurchasePaymentRequest req, string username)
+        {
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    var purchase = await _db.Purchases.FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
+                    if (purchase == null) throw new ArgumentException("Purchase not found.");
+
+                    var payment = new PurchasePayment
+                    {
+                        PurchaseId = purchaseId,
+                        Amount = req.Amount,
+                        AccountId = req.AccountId,
+                        PaymentMethod = req.PaymentMethod,
+                        Notes = req.Notes ?? "",
+                        CreatedBy = username,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.PurchasePayments.Add(payment);
+                    await _db.SaveChangesAsync();
+
+                    var account = await _db.BusinessAccounts.FindAsync(req.AccountId);
+                    if (account != null)
+                    {
+                        await _accountRepo.AddTransactionAsync(new AccountTransaction
+                        {
+                            AccountId = req.AccountId,
+                            TransactionType = "DEBIT",
+                            Amount = req.Amount,
+                            ReferenceType = "PURCHASE",
+                            ReferenceId = payment.PaymentId.ToString(),
+                            Description = $"Payment for Purchase {purchase.PurchaseNumber} via {req.PaymentMethod}",
+                            CreatedBy = username,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    var allPayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).SumAsync(p => p.Amount);
+                    purchase.PaidAmount = allPayments;
+
+                    if (purchase.PaidAmount >= purchase.TotalAmount)
+                        purchase.PaymentStatus = "PAID";
+                    else if (purchase.PaidAmount > 0)
+                        purchase.PaymentStatus = "PARTIAL";
+                    else
+                        purchase.PaymentStatus = "UNPAID";
+
+                    _db.Purchases.Update(purchase);
+                    await _db.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+                    return payment;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+        }
+
+        public async Task AddPurchaseRefundAsync(int purchaseId, PurchaseRefundRequest req, string username)
+        {
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    var purchase = await _db.Purchases.FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
+                    if (purchase == null) throw new ArgumentException("Purchase not found.");
+
+                    var refund = new PurchasePayment
+                    {
+                        PurchaseId = purchaseId,
+                        Amount = -req.Amount,
+                        AccountId = req.AccountId,
+                        PaymentMethod = req.PaymentMethod,
+                        Notes = $"REFUND: {req.Notes}",
+                        CreatedBy = username,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.PurchasePayments.Add(refund);
+                    await _db.SaveChangesAsync();
+
+                    var account = await _db.BusinessAccounts.FindAsync(req.AccountId);
+                    if (account != null)
+                    {
+                        await _accountRepo.AddTransactionAsync(new AccountTransaction
+                        {
+                            AccountId = req.AccountId,
+                            TransactionType = "CREDIT",
+                            Amount = req.Amount,
+                            ReferenceType = "PURCHASE_REFUND",
+                            ReferenceId = refund.PaymentId.ToString(),
+                            Description = $"Refund from Supplier for Purchase {purchase.PurchaseNumber} via {req.PaymentMethod}",
+                            CreatedBy = username,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    var allPayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).SumAsync(p => p.Amount);
+                    purchase.PaidAmount = allPayments;
+
+                    if (purchase.PaidAmount >= purchase.TotalAmount)
+                        purchase.PaymentStatus = "PAID";
+                    else if (purchase.PaidAmount > 0)
+                        purchase.PaymentStatus = "PARTIAL";
+                    else
+                        purchase.PaymentStatus = "UNPAID";
+
+                    _db.Purchases.Update(purchase);
+                    await _db.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+        }
+
+        public async Task DeletePurchasePaymentAsync(int purchaseId, int paymentId, string username)
+        {
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    var payment = await _db.PurchasePayments.FirstOrDefaultAsync(p => p.PaymentId == paymentId && p.PurchaseId == purchaseId);
+                    if (payment == null) throw new ArgumentException("Payment not found or does not belong to this purchase.");
+
+                    var purchase = await _db.Purchases.FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
+                    if (purchase == null) throw new ArgumentException("Purchase not found.");
+
+                    var isRefund = payment.Amount < 0;
+                    var refType = isRefund ? "PURCHASE_REFUND" : "PURCHASE";
+
+                    var relatedTxs = await _db.AccountTransactions
+                        .Where(t => t.ReferenceType == refType && t.ReferenceId == payment.PaymentId.ToString())
+                        .ToListAsync();
+                    _db.AccountTransactions.RemoveRange(relatedTxs);
+
+                    _db.PurchasePayments.Remove(payment);
+                    await _db.SaveChangesAsync();
+
+                    var allPayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).SumAsync(p => p.Amount);
+                    purchase.PaidAmount = allPayments;
+
+                    if (purchase.PaidAmount >= purchase.TotalAmount)
+                        purchase.PaymentStatus = "PAID";
+                    else if (purchase.PaidAmount > 0)
+                        purchase.PaymentStatus = "PARTIAL";
+                    else
+                        purchase.PaymentStatus = "UNPAID";
+
+                    _db.Purchases.Update(purchase);
+                    await _db.SaveChangesAsync();
+
+                    await transaction.CommitAsync();
+                }
+                catch
                 {
                     await transaction.RollbackAsync();
                     throw;
@@ -993,75 +1351,15 @@ namespace VinayagaPlates.Application.Services
                     purchase.UpdatedBy = username;
                     purchase.UpdatedAt = DateTime.UtcNow;
 
-                    // 5. Synchronize Purchase AccountTransaction
-                    var purchaseRefId = purchase.PurchaseId.ToString();
-                    var existingTxs = await _db.AccountTransactions
-                        .Where(t => t.ReferenceType == "PURCHASE" && (t.ReferenceId == purchaseRefId || t.ReferenceId == purchase.PurchaseNumber))
-                        .ToListAsync();
+                    var allPayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchase.PurchaseId).SumAsync(p => p.Amount);
+                    purchase.PaidAmount = allPayments;
 
-                    if (req.PaymentContributions != null && req.PaymentContributions.Any(c => c.Amount > 0))
-                    {
-                        _db.AccountTransactions.RemoveRange(existingTxs);
-                        foreach (var contrib in req.PaymentContributions.Where(c => c.Amount > 0))
-                        {
-                            var acc = await _accountRepo.GetByNameAsync(contrib.AccountName)
-                                      ?? await _db.BusinessAccounts.FirstOrDefaultAsync(a => a.AccountId.ToString() == contrib.AccountName);
-                            if (acc != null)
-                            {
-                                await _accountRepo.AddTransactionAsync(new AccountTransaction
-                                {
-                                    AccountId = acc.AccountId,
-                                    TransactionType = "DEBIT",
-                                    Amount = contrib.Amount,
-                                    ReferenceType = "PURCHASE",
-                                    ReferenceId = purchase.PurchaseId.ToString(),
-                                    Description = $"Paid ₹{contrib.Amount:N2} for Purchase {purchase.PurchaseNumber}",
-                                    CreatedBy = username,
-                                    CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
-                                });
-                            }
-                        }
-                    }
-                    else if (req.PaidAmount > 0)
-                    {
-                        var targetAcc = !string.IsNullOrWhiteSpace(req.PaymentMethodAccountName)
-                            ? await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName)
-                            : (existingTxs.FirstOrDefault()?.AccountId != null 
-                                ? await _accountRepo.GetByIdAsync(existingTxs.First().AccountId)
-                                : await _accountRepo.GetByIdAsync(1));
-
-                        if (targetAcc != null)
-                        {
-                            if (existingTxs.Count == 1)
-                            {
-                                var tx = existingTxs.First();
-                                tx.AccountId = targetAcc.AccountId;
-                                tx.Amount = req.PaidAmount;
-                                tx.CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow;
-                                tx.Description = $"Paid ₹{req.PaidAmount:N2} for Purchase {purchase.PurchaseNumber}";
-                                _db.AccountTransactions.Update(tx);
-                            }
-                            else
-                            {
-                                _db.AccountTransactions.RemoveRange(existingTxs);
-                                await _accountRepo.AddTransactionAsync(new AccountTransaction
-                                {
-                                    AccountId = targetAcc.AccountId,
-                                    TransactionType = "DEBIT",
-                                    Amount = req.PaidAmount,
-                                    ReferenceType = "PURCHASE",
-                                    ReferenceId = purchase.PurchaseId.ToString(),
-                                    Description = $"Paid ₹{req.PaidAmount:N2} for Purchase {purchase.PurchaseNumber}",
-                                    CreatedBy = username,
-                                    CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
-                                });
-                            }
-                        }
-                    }
-                    else if (req.PaidAmount == 0 && existingTxs.Any())
-                    {
-                        _db.AccountTransactions.RemoveRange(existingTxs);
-                    }
+                    if (purchase.PaidAmount >= purchase.TotalAmount)
+                        purchase.PaymentStatus = "PAID";
+                    else if (purchase.PaidAmount > 0)
+                        purchase.PaymentStatus = "PARTIAL";
+                    else
+                        purchase.PaymentStatus = "UNPAID";
 
                     await _db.SaveChangesAsync();
                     await transaction.CommitAsync();

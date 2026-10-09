@@ -9,6 +9,18 @@ namespace VinayagaPlates.Contracts.DTOs
 
     public record PaymentContributionRequest(string AccountName, decimal Amount);
 
+    public record PurchasePaymentRequest(
+        decimal Amount,
+        int AccountId,
+        string PaymentMethod = "CASH",
+        string Notes = "");
+
+    public record PurchaseRefundRequest(
+        decimal Amount,
+        int AccountId,
+        string PaymentMethod = "CASH",
+        string Notes = "");
+
     public record PurchaseCreateRequest(
         int SupplierId,
         DateTime PurchaseDate,
