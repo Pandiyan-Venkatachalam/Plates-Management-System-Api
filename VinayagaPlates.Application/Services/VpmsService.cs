@@ -1099,7 +1099,7 @@ namespace VinayagaPlates.Application.Services
                     var payment = await _db.SalePayments.FirstOrDefaultAsync(p => p.PaymentId == paymentId && p.SaleId == saleId);
                     if (payment == null) throw new ArgumentException("Payment not found.");
 
-                    var sale = await _db.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId);
+                    var sale = await _db.Sales.Include(s => s.Customer).FirstOrDefaultAsync(s => s.SaleId == saleId);
                     if (sale == null) throw new ArgumentException("Sale not found.");
 
                     // Remove linked AccountTransaction
@@ -1316,7 +1316,7 @@ namespace VinayagaPlates.Application.Services
                     var payment = await _db.PurchasePayments.FirstOrDefaultAsync(p => p.PaymentId == paymentId && p.PurchaseId == purchaseId);
                     if (payment == null) throw new ArgumentException("Payment not found or does not belong to this purchase.");
 
-                    var purchase = await _db.Purchases.FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
+                    var purchase = await _db.Purchases.Include(p => p.Supplier).FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
                     if (purchase == null) throw new ArgumentException("Purchase not found.");
 
                     var isRefund = payment.Amount < 0;
