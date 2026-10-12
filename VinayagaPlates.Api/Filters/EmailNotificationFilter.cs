@@ -30,11 +30,13 @@ namespace VinayagaPlates.Api.Filters
             if (method != "POST" && method != "PUT" && method != "DELETE")
                 return;
 
-            // Ignore login/auth endpoints and WhatsApp broadcast endpoints
+            // Ignore login/auth endpoints, WhatsApp broadcast, and payment/refund endpoints (which have rich notifications via VpmsService)
             if (request.Path.Value != null && (
                 request.Path.Value.Contains("auth", StringComparison.OrdinalIgnoreCase) || 
                 request.Path.Value.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ||
-                request.Path.Value.Contains("broadcast", StringComparison.OrdinalIgnoreCase)
+                request.Path.Value.Contains("broadcast", StringComparison.OrdinalIgnoreCase) ||
+                request.Path.Value.Contains("/payments", StringComparison.OrdinalIgnoreCase) ||
+                request.Path.Value.Contains("/refunds", StringComparison.OrdinalIgnoreCase)
             )) return;
 
             // Only care if the status is successful (2xx)
