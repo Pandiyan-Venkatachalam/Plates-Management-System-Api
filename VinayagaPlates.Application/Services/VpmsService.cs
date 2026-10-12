@@ -1002,8 +1002,17 @@ namespace VinayagaPlates.Application.Services
 
                     await transaction.CommitAsync();
 
-                    var allSalePayments = await _db.SalePayments.Where(p => p.SaleId == saleId).ToListAsync();
-                    var history = allSalePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+                    var allSalePayments = await _db.SalePayments
+                        .Include(p => p.Account)
+                        .Where(p => p.SaleId == saleId)
+                        .ToListAsync();
+                    var history = allSalePayments.Select(p => (
+                        p.Amount, 
+                        p.CreatedAt, 
+                        CollectedBy: p.Account != null && !string.IsNullOrWhiteSpace(p.Account.AccountName) ? p.Account.AccountName : p.CreatedBy, 
+                        p.PaymentMethod,
+                        p.Notes ?? ""
+                    ));
 
                     _ = NotifyPartnerAboutPaymentAsync(
                         "Added", 
@@ -1012,6 +1021,7 @@ namespace VinayagaPlates.Application.Services
                         sale.SaleNumber,
                         sale.TotalAmount,
                         req.Amount, 
+                        sale.PaidAmount,
                         sale.TotalAmount - sale.PaidAmount,
                         DateTime.UtcNow, 
                         username,
@@ -1130,8 +1140,17 @@ namespace VinayagaPlates.Application.Services
                     
                     await transaction.CommitAsync();
 
-                    var allSalePayments = await _db.SalePayments.Where(p => p.SaleId == saleId).ToListAsync();
-                    var history = allSalePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+                    var allSalePayments = await _db.SalePayments
+                        .Include(p => p.Account)
+                        .Where(p => p.SaleId == saleId)
+                        .ToListAsync();
+                    var history = allSalePayments.Select(p => (
+                        p.Amount, 
+                        p.CreatedAt, 
+                        CollectedBy: p.Account != null && !string.IsNullOrWhiteSpace(p.Account.AccountName) ? p.Account.AccountName : p.CreatedBy, 
+                        p.PaymentMethod,
+                        p.Notes ?? ""
+                    ));
 
                     _ = NotifyPartnerAboutPaymentAsync(
                         "Deleted", 
@@ -1140,6 +1159,7 @@ namespace VinayagaPlates.Application.Services
                         sale.SaleNumber,
                         sale.TotalAmount,
                         payment.Amount, 
+                        sale.PaidAmount,
                         sale.TotalAmount - sale.PaidAmount,
                         DateTime.UtcNow, 
                         username,
@@ -1221,8 +1241,17 @@ namespace VinayagaPlates.Application.Services
 
                     await transaction.CommitAsync();
 
-                    var allPurchasePayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).ToListAsync();
-                    var history = allPurchasePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+                    var allPurchasePayments = await _db.PurchasePayments
+                        .Include(p => p.Account)
+                        .Where(p => p.PurchaseId == purchaseId)
+                        .ToListAsync();
+                    var history = allPurchasePayments.Select(p => (
+                        p.Amount, 
+                        p.CreatedAt, 
+                        CollectedBy: p.Account != null && !string.IsNullOrWhiteSpace(p.Account.AccountName) ? p.Account.AccountName : p.CreatedBy, 
+                        p.PaymentMethod,
+                        p.Notes ?? ""
+                    ));
 
                     _ = NotifyPartnerAboutPaymentAsync(
                         "Added", 
@@ -1231,6 +1260,7 @@ namespace VinayagaPlates.Application.Services
                         purchase.PurchaseNumber,
                         purchase.TotalAmount,
                         req.Amount, 
+                        purchase.PaidAmount,
                         purchase.TotalAmount - purchase.PaidAmount,
                         DateTime.UtcNow, 
                         username,
@@ -1345,16 +1375,26 @@ namespace VinayagaPlates.Application.Services
 
                     await transaction.CommitAsync();
 
-                    var allPurchasePayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).ToListAsync();
-                    var history = allPurchasePayments.Select(p => (p.Amount, p.CreatedAt, p.CreatedBy, p.PaymentMethod));
+                    var allPurchasePayments = await _db.PurchasePayments
+                        .Include(p => p.Account)
+                        .Where(p => p.PurchaseId == purchaseId)
+                        .ToListAsync();
+                    var history = allPurchasePayments.Select(p => (
+                        p.Amount, 
+                        p.CreatedAt, 
+                        CollectedBy: p.Account != null && !string.IsNullOrWhiteSpace(p.Account.AccountName) ? p.Account.AccountName : p.CreatedBy, 
+                        p.PaymentMethod,
+                        p.Notes ?? ""
+                    ));
 
                     _ = NotifyPartnerAboutPaymentAsync(
                         "Deleted", 
-                        "Purchase Ledger", 
+                        "Purchases Ledger", 
                         purchase.Supplier?.SupplierName ?? "Unknown", 
                         purchase.PurchaseNumber,
                         purchase.TotalAmount,
                         payment.Amount, 
+                        purchase.PaidAmount,
                         purchase.TotalAmount - purchase.PaidAmount,
                         DateTime.UtcNow, 
                         username,
@@ -1704,10 +1744,11 @@ namespace VinayagaPlates.Application.Services
             string invoiceNumber,
             decimal totalInvoiceAmount,
             decimal paymentAmount, 
+            decimal totalPaidAmount,
             decimal remainingBalance,
             DateTime date, 
             string loggedInUser,
-            IEnumerable<(decimal Amount, DateTime Date, string CollectedBy, string PaymentMethod)> paymentHistory)
+            IEnumerable<(decimal Amount, DateTime Date, string CollectedBy, string PaymentMethod, string Notes)> paymentHistory)
         {
             try
             {
@@ -1743,16 +1784,24 @@ namespace VinayagaPlates.Application.Services
                 {
                     foreach(var p in paymentHistory.OrderByDescending(x => x.Date))
                     {
+                        var notesHtml = !string.IsNullOrWhiteSpace(p.Notes) 
+                            ? $"<div style='font-size: 11px; color: #64748b; margin-top: 2px;'>{p.Notes}</div>" 
+                            : "";
+
                         historyRows += $@"
                         <tr>
                             <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{p.Date:dd-MMM-yyyy}</td>
-                            <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{p.CollectedBy}</td>
+                            <td style='padding: 8px; border-bottom: 1px solid #ddd; font-weight: 600;'>
+                                {p.CollectedBy}
+                                {notesHtml}
+                            </td>
                             <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{p.PaymentMethod}</td>
-                            <td style='padding: 8px; border-bottom: 1px solid #ddd; color: green;'>₹{p.Amount:N2}</td>
+                            <td style='padding: 8px; border-bottom: 1px solid #ddd; color: green; font-weight: 600;'>₹{p.Amount:N2}</td>
                         </tr>";
                     }
                 }
 
+                string accountColTitle = ledgerType.Contains("Sales") ? "Collected By" : "Paid From";
                 string subject = $"VPMS Notification: Payment {action} in {ledgerType}";
                 string htmlBody = $@"
                     <div style='font-family: Arial, sans-serif; padding: 20px; color: #333;'>
@@ -1760,9 +1809,9 @@ namespace VinayagaPlates.Application.Services
                         <h2 style='color: #004085; margin-top: 0;'>VPMS Payment Notification</h2>
                         <p><strong>{loggedInUser}</strong> has {action.ToLower()} a payment in the {ledgerType}.</p>
                         
-                        <table style='width: 100%; max-width: 450px; border-collapse: collapse; margin-top: 15px;'>
+                        <table style='width: 100%; max-width: 480px; border-collapse: collapse; margin-top: 15px;'>
                             <tr>
-                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>{(ledgerType == "Sales Ledger" ? "Customer" : "Supplier")}:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>{(ledgerType.Contains("Sales") ? "Customer" : "Supplier")}:</strong></td>
                                 <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{partnerName}</td>
                             </tr>
                             <tr>
@@ -1770,16 +1819,20 @@ namespace VinayagaPlates.Application.Services
                                 <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{invoiceNumber}</td>
                             </tr>
                             <tr>
-                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Total Amount:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Total Bill Amount:</strong></td>
                                 <td style='padding: 8px; border-bottom: 1px solid #ddd;'>₹{totalInvoiceAmount:N2}</td>
                             </tr>
                             <tr>
-                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Paid Amount:</strong></td>
-                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: green;'>₹{paymentAmount:N2}</td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>{(action == "Deleted" ? "Payment Removed" : "This Payment")}:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: #0284c7; font-weight: bold;'>₹{paymentAmount:N2}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Total Paid:</strong></td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: green; font-weight: bold;'>₹{totalPaidAmount:N2}</td>
                             </tr>
                             <tr>
                                 <td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Remaining Balance:</strong></td>
-                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: red;'>₹{remainingBalance:N2}</td>
+                                <td style='padding: 8px; border-bottom: 1px solid #ddd; color: {(remainingBalance > 0 ? "#dc2626" : "#475569")}; font-weight: bold;'>₹{remainingBalance:N2}</td>
                             </tr>
                         </table>
 
@@ -1788,7 +1841,7 @@ namespace VinayagaPlates.Application.Services
                             <thead>
                                 <tr style='background-color: #f1f5f9;'>
                                     <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Date</th>
-                                    <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Collected By</th>
+                                    <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>{accountColTitle}</th>
                                     <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Method</th>
                                     <th style='padding: 8px; border-bottom: 2px solid #ddd; text-align: left;'>Amount</th>
                                 </tr>
