@@ -37,93 +37,37 @@ namespace VinayagaPlates.Api.Controllers
             var purchaseNumbers = data.Where(p => !string.IsNullOrEmpty(p.PurchaseNumber)).Select(p => p.PurchaseNumber).ToHashSet();
             var purchaseIdInts = data.Select(p => p.PurchaseId).ToList();
 
+            // 1. Reconcile purchases, payments, and account transactions
+            await PurchaseReconciliationService.ReconcilePurchasesAndAccountsAsync(_db);
+
+            // 2. Fetch payments and transactions
             var payments = await _db.PurchasePayments
                 .Include(p => p.Account)
                 .Where(p => purchaseIdInts.Contains(p.PurchaseId))
                 .ToListAsync();
             var paymentLookup = payments.ToLookup(p => p.PurchaseId);
 
-            // Auto-heal any existing purchases that have PaidAmount > 0 but missing PurchasePayments
-            var unlinkedPaid = data.Where(p => p.PaidAmount > 0 && !paymentLookup[p.PurchaseId].Any()).ToList();
-            if (unlinkedPaid.Any())
-            {
-                var defaultAccount = await _db.BusinessAccounts.FirstOrDefaultAsync(a => a.AccountName.ToLower().Contains("pandiyan")) 
-                                     ?? await _db.BusinessAccounts.FirstOrDefaultAsync();
-
-                if (defaultAccount != null)
-                {
-                    foreach (var unlinked in unlinkedPaid)
-                    {
-                        var targetAcc = (!string.IsNullOrEmpty(unlinked.CreatedBy) 
-                            ? await _db.BusinessAccounts.FirstOrDefaultAsync(a => a.AccountName.ToLower() == unlinked.CreatedBy.ToLower()) 
-                            : null) ?? defaultAccount;
-
-                        var newPay = new PurchasePayment
-                        {
-                            PurchaseId = unlinked.PurchaseId,
-                            Amount = unlinked.PaidAmount,
-                            AccountId = targetAcc.AccountId,
-                            PaymentMethod = "CASH",
-                            Notes = "Initial payment upon purchase creation",
-                            CreatedBy = unlinked.CreatedBy ?? "SYSTEM",
-                            CreatedAt = unlinked.PurchaseDate != default ? unlinked.PurchaseDate : unlinked.CreatedAt
-                        };
-                        _db.PurchasePayments.Add(newPay);
-
-                        // Check if AccountTransaction already exists for this purchase
-                        var existsTx = await _db.AccountTransactions.AnyAsync(t => 
-                            t.ReferenceType == "PURCHASE" && 
-                            (t.ReferenceId == unlinked.PurchaseId.ToString() || t.ReferenceId == unlinked.PurchaseNumber));
-
-                        if (!existsTx)
-                        {
-                            _db.AccountTransactions.Add(new AccountTransaction
-                            {
-                                AccountId = targetAcc.AccountId,
-                                TransactionType = "DEBIT",
-                                Amount = unlinked.PaidAmount,
-                                ReferenceType = "PURCHASE",
-                                ReferenceId = unlinked.PurchaseId.ToString(),
-                                Description = $"Paid ₹{unlinked.PaidAmount:N2} for Purchase {unlinked.PurchaseNumber}",
-                                CreatedBy = unlinked.CreatedBy ?? "SYSTEM",
-                                CreatedAt = unlinked.PurchaseDate != default ? unlinked.PurchaseDate : unlinked.CreatedAt
-                            });
-                        }
-                    }
-                    await _db.SaveChangesAsync();
-
-                    // Reload payments and lookup
-                    payments = await _db.PurchasePayments
-                        .Include(p => p.Account)
-                        .Where(p => purchaseIdInts.Contains(p.PurchaseId))
-                        .ToListAsync();
-                    paymentLookup = payments.ToLookup(p => p.PurchaseId);
-                }
-            }
-
             var linkedTxs = await _db.AccountTransactions
                 .Include(t => t.Account)
-                .Where(t => t.ReferenceType == "PURCHASE" && (purchaseIds.Contains(t.ReferenceId) || purchaseNumbers.Contains(t.ReferenceId)))
+                .Where(t => (t.ReferenceType == "PURCHASE" || t.ReferenceType == "PURCHASE_PAYMENT") && 
+                            (purchaseIds.Contains(t.ReferenceId) || purchaseNumbers.Contains(t.ReferenceId)))
                 .ToListAsync();
 
             var txLookup = linkedTxs.ToLookup(t => t.ReferenceId);
 
             var resp = data.Select(p => {
                 var paymentList = paymentLookup[p.PurchaseId].ToList();
-                string accName = "";
-                int accId = 0;
+                var txList = txLookup[p.PurchaseId.ToString()].Concat(txLookup[p.PurchaseNumber]).ToList();
 
-                if (paymentList.Any())
-                {
-                    accName = string.Join(", ", paymentList.Select(x => x.Account?.AccountName).Where(n => !string.IsNullOrEmpty(n)).Distinct());
-                    accId = paymentList.First().AccountId;
-                }
-                else
-                {
-                    var tx = txLookup[p.PurchaseId.ToString()].FirstOrDefault() ?? txLookup[p.PurchaseNumber].FirstOrDefault();
-                    accName = tx?.Account?.AccountName ?? "";
-                    accId = tx?.AccountId ?? 0;
-                }
+                var accountNames = paymentList
+                    .Select(x => x.Account?.AccountName)
+                    .Concat(txList.Select(t => t.Account?.AccountName))
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                string accName = string.Join(", ", accountNames);
+                int accId = paymentList.FirstOrDefault()?.AccountId ?? txList.FirstOrDefault()?.AccountId ?? 0;
 
                 return new {
                     p.PurchaseId,

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using VinayagaPlates.Application;
 using VinayagaPlates.Application.Repositories;
+using VinayagaPlates.Application.Services;
 using VinayagaPlates.Domain.Entities;
 
 namespace VinayagaPlates.Infrastructure.Repositories
@@ -16,6 +17,8 @@ namespace VinayagaPlates.Infrastructure.Repositories
 
         public async Task<IEnumerable<AccountTransaction>> GetTransactionsAsync()
         {
+            await PurchaseReconciliationService.ReconcilePurchasesAndAccountsAsync(Db);
+
             var defaultAcc = await Db.BusinessAccounts.FirstOrDefaultAsync();
 
             // 1. Fetch valid active entities
@@ -44,7 +47,7 @@ namespace VinayagaPlates.Infrastructure.Repositories
                         orphanedTx.Add(t);
                     }
                 }
-                else if (t.ReferenceType == "PURCHASE")
+                else if (t.ReferenceType == "PURCHASE" || t.ReferenceType == "PURCHASE_PAYMENT")
                 {
                     if (!validPurchaseIds.Contains(t.ReferenceId) && 
                         !validPurchaseNumbers.Contains(t.ReferenceId) &&

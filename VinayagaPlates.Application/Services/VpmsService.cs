@@ -580,6 +580,9 @@ namespace VinayagaPlates.Application.Services
                     else if (req.PaidAmount > 0)
                     {
                         var cashAcc = await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName)
+                                      ?? (!string.IsNullOrWhiteSpace(username) ? await _accountRepo.GetByNameAsync(username) : null)
+                                      ?? (!string.IsNullOrWhiteSpace(username) ? await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(_db.BusinessAccounts, a => a.AccountName.ToLower().Contains(username.ToLower()) || (a.AccountType != null && a.AccountType.ToLower().Contains(username.ToLower()))) : null)
+                                      ?? await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(_db.BusinessAccounts, a => a.AccountName.ToLower().Contains("pandiyan") || (a.AccountType != null && a.AccountType.ToLower().Contains("pandiyan")))
                                       ?? await _accountRepo.GetByIdAsync(1)
                                       ?? await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(_db.BusinessAccounts);
                         if (cashAcc != null)
