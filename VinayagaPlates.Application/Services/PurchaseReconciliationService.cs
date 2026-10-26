@@ -114,11 +114,10 @@ namespace VinayagaPlates.Application.Services
                 // ----------------------------------------------------
                 else if (isPur16 && pandiyanAcc != null && ranjithAcc != null)
                 {
-                    decimal splitAmt = Math.Round((p.PaidAmount / 2m) * 100m) / 100m;
-                    decimal pandiyanSplit = splitAmt;
-                    decimal ranjithSplit = p.PaidAmount - splitAmt;
+                    decimal pandiyanSplit = 44000m;
+                    decimal ranjithSplit = 35990m;
 
-                    // Ensure AccountTransactions has 2 debits: one for Pandiyan, one for Ranjith
+                    // Ensure AccountTransactions has 2 debits: Pandiyan ₹44,000 and Ranjith ₹35,990
                     var pandiyanTx = pTxs.FirstOrDefault(t => t.AccountId == pandiyanAcc.AccountId);
                     var ranjithTx = pTxs.FirstOrDefault(t => t.AccountId == ranjithAcc.AccountId);
 
@@ -140,9 +139,10 @@ namespace VinayagaPlates.Application.Services
                         pTxs.Add(pandiyanTx);
                         changed = true;
                     }
-                    else if (Math.Abs(pandiyanTx.Amount - pandiyanSplit) > 1.0m)
+                    else if (Math.Abs(pandiyanTx.Amount - pandiyanSplit) > 0.01m)
                     {
                         pandiyanTx.Amount = pandiyanSplit;
+                        pandiyanTx.Description = $"Paid ₹{pandiyanSplit:N2} for Purchase {p.PurchaseNumber} (Split: Pandiyan)";
                         changed = true;
                     }
 
@@ -164,9 +164,10 @@ namespace VinayagaPlates.Application.Services
                         pTxs.Add(ranjithTx);
                         changed = true;
                     }
-                    else if (Math.Abs(ranjithTx.Amount - ranjithSplit) > 1.0m)
+                    else if (Math.Abs(ranjithTx.Amount - ranjithSplit) > 0.01m)
                     {
                         ranjithTx.Amount = ranjithSplit;
+                        ranjithTx.Description = $"Paid ₹{ranjithSplit:N2} for Purchase {p.PurchaseNumber} (Split: Ranjith)";
                         changed = true;
                     }
 
@@ -179,7 +180,7 @@ namespace VinayagaPlates.Application.Services
                         changed = true;
                     }
 
-                    // Reconcile PurchasePayments for PUR-16: MUST have 2 payments (Pandiyan & Ranjith)
+                    // Reconcile PurchasePayments for PUR-16: MUST have 2 payments (Pandiyan ₹44,000 & Ranjith ₹35,990)
                     var pandiyanPay = pPays.FirstOrDefault(pp => pp.AccountId == pandiyanAcc.AccountId);
                     var ranjithPay = pPays.FirstOrDefault(pp => pp.AccountId == ranjithAcc.AccountId);
 
@@ -191,7 +192,7 @@ namespace VinayagaPlates.Application.Services
                             Amount = pandiyanSplit,
                             AccountId = pandiyanAcc.AccountId,
                             PaymentMethod = "CASH",
-                            Notes = "Split initial payment upon purchase creation",
+                            Notes = "Split initial payment upon purchase creation (Pandiyan)",
                             CreatedBy = "Pandiyan",
                             CreatedAt = p.PurchaseDate != default ? p.PurchaseDate : p.CreatedAt
                         };
@@ -200,7 +201,7 @@ namespace VinayagaPlates.Application.Services
                         pPays.Add(pandiyanPay);
                         changed = true;
                     }
-                    else if (Math.Abs(pandiyanPay.Amount - pandiyanSplit) > 1.0m)
+                    else if (Math.Abs(pandiyanPay.Amount - pandiyanSplit) > 0.01m)
                     {
                         pandiyanPay.Amount = pandiyanSplit;
                         changed = true;
@@ -214,7 +215,7 @@ namespace VinayagaPlates.Application.Services
                             Amount = ranjithSplit,
                             AccountId = ranjithAcc.AccountId,
                             PaymentMethod = "CASH",
-                            Notes = "Split initial payment upon purchase creation",
+                            Notes = "Split initial payment upon purchase creation (Ranjith)",
                             CreatedBy = "Pandiyan",
                             CreatedAt = p.PurchaseDate != default ? p.PurchaseDate : p.CreatedAt
                         };
@@ -223,7 +224,7 @@ namespace VinayagaPlates.Application.Services
                         pPays.Add(ranjithPay);
                         changed = true;
                     }
-                    else if (Math.Abs(ranjithPay.Amount - ranjithSplit) > 1.0m)
+                    else if (Math.Abs(ranjithPay.Amount - ranjithSplit) > 0.01m)
                     {
                         ranjithPay.Amount = ranjithSplit;
                         changed = true;
