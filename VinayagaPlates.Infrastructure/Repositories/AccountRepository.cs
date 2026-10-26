@@ -26,6 +26,7 @@ namespace VinayagaPlates.Infrastructure.Repositories
             var validPurchases = await Db.Purchases.ToListAsync();
             var validPurchaseIds = validPurchases.Select(p => p.PurchaseId.ToString()).ToHashSet();
             var validPurchaseNumbers = validPurchases.Where(p => !string.IsNullOrEmpty(p.PurchaseNumber)).Select(p => p.PurchaseNumber).ToHashSet();
+            var validPurchasePaymentIds = (await Db.PurchasePayments.Select(p => p.PaymentId.ToString()).ToListAsync()).ToHashSet();
 
             var validLedgerIds = (await Db.PartnerLedgers.Select(l => l.LedgerId).ToListAsync())
                 .Select(id => $"LEDGER-{id}").ToHashSet();
@@ -45,7 +46,9 @@ namespace VinayagaPlates.Infrastructure.Repositories
                 }
                 else if (t.ReferenceType == "PURCHASE")
                 {
-                    if (!validPurchaseIds.Contains(t.ReferenceId) && !validPurchaseNumbers.Contains(t.ReferenceId))
+                    if (!validPurchaseIds.Contains(t.ReferenceId) && 
+                        !validPurchaseNumbers.Contains(t.ReferenceId) &&
+                        !validPurchasePaymentIds.Contains(t.ReferenceId))
                     {
                         orphanedTx.Add(t);
                     }

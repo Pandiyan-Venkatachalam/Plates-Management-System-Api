@@ -35,6 +35,71 @@ namespace VinayagaPlates.Api.Controllers
             var data = await _purchaseRepo.GetPurchasesWithDetailsAsync();
             var purchaseIds = data.Select(p => p.PurchaseId.ToString()).ToHashSet();
             var purchaseNumbers = data.Where(p => !string.IsNullOrEmpty(p.PurchaseNumber)).Select(p => p.PurchaseNumber).ToHashSet();
+            var purchaseIdInts = data.Select(p => p.PurchaseId).ToList();
+
+            var payments = await _db.PurchasePayments
+                .Include(p => p.Account)
+                .Where(p => purchaseIdInts.Contains(p.PurchaseId))
+                .ToListAsync();
+            var paymentLookup = payments.ToLookup(p => p.PurchaseId);
+
+            // Auto-heal any existing purchases that have PaidAmount > 0 but missing PurchasePayments
+            var unlinkedPaid = data.Where(p => p.PaidAmount > 0 && !paymentLookup[p.PurchaseId].Any()).ToList();
+            if (unlinkedPaid.Any())
+            {
+                var defaultAccount = await _db.BusinessAccounts.FirstOrDefaultAsync(a => a.AccountName.ToLower().Contains("pandiyan")) 
+                                     ?? await _db.BusinessAccounts.FirstOrDefaultAsync();
+
+                if (defaultAccount != null)
+                {
+                    foreach (var unlinked in unlinkedPaid)
+                    {
+                        var targetAcc = (!string.IsNullOrEmpty(unlinked.CreatedBy) 
+                            ? await _db.BusinessAccounts.FirstOrDefaultAsync(a => a.AccountName.ToLower() == unlinked.CreatedBy.ToLower()) 
+                            : null) ?? defaultAccount;
+
+                        var newPay = new PurchasePayment
+                        {
+                            PurchaseId = unlinked.PurchaseId,
+                            Amount = unlinked.PaidAmount,
+                            AccountId = targetAcc.AccountId,
+                            PaymentMethod = "CASH",
+                            Notes = "Initial payment upon purchase creation",
+                            CreatedBy = unlinked.CreatedBy ?? "SYSTEM",
+                            CreatedAt = unlinked.PurchaseDate != default ? unlinked.PurchaseDate : unlinked.CreatedAt
+                        };
+                        _db.PurchasePayments.Add(newPay);
+
+                        // Check if AccountTransaction already exists for this purchase
+                        var existsTx = await _db.AccountTransactions.AnyAsync(t => 
+                            t.ReferenceType == "PURCHASE" && 
+                            (t.ReferenceId == unlinked.PurchaseId.ToString() || t.ReferenceId == unlinked.PurchaseNumber));
+
+                        if (!existsTx)
+                        {
+                            _db.AccountTransactions.Add(new AccountTransaction
+                            {
+                                AccountId = targetAcc.AccountId,
+                                TransactionType = "DEBIT",
+                                Amount = unlinked.PaidAmount,
+                                ReferenceType = "PURCHASE",
+                                ReferenceId = unlinked.PurchaseId.ToString(),
+                                Description = $"Paid ₹{unlinked.PaidAmount:N2} for Purchase {unlinked.PurchaseNumber}",
+                                CreatedBy = unlinked.CreatedBy ?? "SYSTEM",
+                                CreatedAt = unlinked.PurchaseDate != default ? unlinked.PurchaseDate : unlinked.CreatedAt
+                            });
+                        }
+                    }
+                    await _db.SaveChangesAsync();
+
+                    // Reload payments and lookup
+                    payments = await _db.PurchasePayments
+                        .Include(p => p.Account)
+                        .Where(p => purchaseIdInts.Contains(p.PurchaseId))
+                        .ToListAsync();
+                    paymentLookup = payments.ToLookup(p => p.PurchaseId);
+                }
+            }
 
             var linkedTxs = await _db.AccountTransactions
                 .Include(t => t.Account)
@@ -44,9 +109,21 @@ namespace VinayagaPlates.Api.Controllers
             var txLookup = linkedTxs.ToLookup(t => t.ReferenceId);
 
             var resp = data.Select(p => {
-                var tx = txLookup[p.PurchaseId.ToString()].FirstOrDefault() ?? txLookup[p.PurchaseNumber].FirstOrDefault();
-                var accName = tx?.Account?.AccountName ?? "";
-                var accId = tx?.AccountId ?? 0;
+                var paymentList = paymentLookup[p.PurchaseId].ToList();
+                string accName = "";
+                int accId = 0;
+
+                if (paymentList.Any())
+                {
+                    accName = string.Join(", ", paymentList.Select(x => x.Account?.AccountName).Where(n => !string.IsNullOrEmpty(n)).Distinct());
+                    accId = paymentList.First().AccountId;
+                }
+                else
+                {
+                    var tx = txLookup[p.PurchaseId.ToString()].FirstOrDefault() ?? txLookup[p.PurchaseNumber].FirstOrDefault();
+                    accName = tx?.Account?.AccountName ?? "";
+                    accId = tx?.AccountId ?? 0;
+                }
 
                 return new {
                     p.PurchaseId,
@@ -56,7 +133,7 @@ namespace VinayagaPlates.Api.Controllers
                     p.PurchaseDate,
                     p.TotalAmount,
                     p.PaidAmount,
-                    BalanceAmount = p.TotalAmount - p.PaidAmount,
+                    BalanceAmount = Math.Max(0, p.TotalAmount - p.PaidAmount),
                     p.PaymentStatus,
                     p.Status,
                     AccountId = accId,
@@ -152,35 +229,108 @@ namespace VinayagaPlates.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePurchase(int id)
         {
-            var purchase = await _purchaseRepo.GetPurchaseWithDetailsByIdAsync(id);
-            if (purchase == null)
-                return NotFound(ApiResponse<object>.Fail("Purchase not found.", 404));
-
-            // Clean up linked AccountTransactions
-            var linkedTxs = await _db.AccountTransactions
-                .Where(t => t.ReferenceType == "PURCHASE" && (t.ReferenceId == id.ToString() || t.ReferenceId == purchase.PurchaseNumber))
-                .ToListAsync();
-            if (linkedTxs.Any())
+            using (var transaction = await _db.Database.BeginTransactionAsync())
             {
-                _db.AccountTransactions.RemoveRange(linkedTxs);
-                await _db.SaveChangesAsync();
+                try
+                {
+                    var purchase = await _db.Purchases
+                        .Include(p => p.Details)
+                        .Include(p => p.Supplier)
+                        .FirstOrDefaultAsync(p => p.PurchaseId == id);
+
+                    if (purchase == null)
+                        return NotFound(ApiResponse<object>.Fail("Purchase not found.", 404));
+
+                    // 1. Inventory reversal check
+                    foreach (var d in purchase.Details)
+                    {
+                        if (d.BatchId > 0)
+                        {
+                            var batch = await _db.InventoryBatches.FindAsync(d.BatchId);
+                            if (batch != null)
+                            {
+                                if (batch.CurrentQuantity < batch.InitialQuantity)
+                                {
+                                    return BadRequest(ApiResponse<object>.Fail($"Cannot delete purchase because {batch.InitialQuantity - batch.CurrentQuantity} units from batch {batch.BatchNumber} have already been sold in Sales.", 400));
+                                }
+
+                                var movements = await _db.InventoryMovements
+                                    .Where(m => m.BatchId == batch.BatchId || (m.ReferenceType == "PURCHASE" && m.ReferenceId == id.ToString()))
+                                    .ToListAsync();
+                                if (movements.Any())
+                                {
+                                    _db.InventoryMovements.RemoveRange(movements);
+                                }
+
+                                _db.InventoryBatches.Remove(batch);
+                            }
+                        }
+                    }
+
+                    // 2. Remove purchase payments and linked account transactions
+                    var payments = await _db.PurchasePayments.Where(p => p.PurchaseId == id).ToListAsync();
+                    var paymentIdStrs = payments.Select(p => p.PaymentId.ToString()).ToList();
+
+                    var linkedTxs = await _db.AccountTransactions
+                        .Where(t => t.ReferenceType == "PURCHASE" && 
+                            (t.ReferenceId == id.ToString() || 
+                             t.ReferenceId == purchase.PurchaseNumber || 
+                             paymentIdStrs.Contains(t.ReferenceId)))
+                        .ToListAsync();
+
+                    if (linkedTxs.Any())
+                    {
+                        _db.AccountTransactions.RemoveRange(linkedTxs);
+                    }
+
+                    if (payments.Any())
+                    {
+                        _db.PurchasePayments.RemoveRange(payments);
+                    }
+
+                    // 3. Remove expense allocations and purchase expenses if any
+                    var expenseAllocations = await _db.PurchaseExpenseAllocations
+                        .Where(pea => pea.PurchaseDetail.PurchaseId == id)
+                        .ToListAsync();
+                    if (expenseAllocations.Any())
+                    {
+                        _db.PurchaseExpenseAllocations.RemoveRange(expenseAllocations);
+                    }
+
+                    var expenses = await _db.PurchaseExpenses
+                        .Where(pe => pe.PurchaseId == id)
+                        .ToListAsync();
+                    if (expenses.Any())
+                    {
+                        _db.PurchaseExpenses.RemoveRange(expenses);
+                    }
+
+                    // 4. Remove purchase details and purchase
+                    _db.PurchaseDetails.RemoveRange(purchase.Details);
+                    _db.Purchases.Remove(purchase);
+
+                    await _db.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var details = new { 
+                        purchase.PurchaseId, 
+                        purchase.PurchaseNumber, 
+                        SupplierName = purchase.Supplier?.SupplierName ?? $"Supplier ID {purchase.SupplierId}",
+                        purchase.TotalAmount, 
+                        purchase.PaidAmount, 
+                        purchase.Status, 
+                        purchase.PurchaseDate,
+                        TotalItems = purchase.Details?.Sum(d => d.Quantity) ?? 0
+                    };
+                    var response = ApiResponse<object>.Success(details, "Purchase deleted, stock reverted, and payment refunded to account.");
+                    return StatusCode(response.StatusCode, response);
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    return StatusCode(500, ApiResponse<object>.Fail($"Error deleting purchase: {ex.Message}", 500));
+                }
             }
-
-            _purchaseRepo.Delete(purchase);
-            await _purchaseRepo.SaveChangesAsync();
-
-            var details = new { 
-                purchase.PurchaseId, 
-                purchase.PurchaseNumber, 
-                SupplierName = purchase.Supplier?.SupplierName ?? $"Supplier ID {purchase.SupplierId}",
-                purchase.TotalAmount, 
-                purchase.PaidAmount, 
-                purchase.Status, 
-                purchase.PurchaseDate,
-                TotalItems = purchase.Details?.Sum(d => d.Quantity) ?? 0
-            };
-            var response = ApiResponse<object>.Success(details, "Purchase deleted successfully.");
-            return StatusCode(response.StatusCode, response);
         }
 
         [HttpGet("{id}/payments")]

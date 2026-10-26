@@ -385,6 +385,20 @@ namespace VinayagaPlates.Application.Services
                         throw new InvalidOperationException("Paid amount cannot exceed the total purchase amount.");
                     }
 
+                    // Prevent duplicate purchase creation within 5 seconds for the same supplier and amounts
+                    var recentDuplicate = await _db.Purchases
+                        .Where(p => p.SupplierId == req.SupplierId && 
+                                    p.TotalAmount == totalPurchaseAmount && 
+                                    p.PaidAmount == req.PaidAmount && 
+                                    p.CreatedAt >= DateTime.UtcNow.AddSeconds(-5))
+                        .FirstOrDefaultAsync();
+
+                    if (recentDuplicate != null)
+                    {
+                        await transaction.RollbackAsync();
+                        return recentDuplicate;
+                    }
+
                     var purchase = new Purchase
                     {
                         PurchaseNumber = "PUR-" + DateTime.UtcNow.Ticks.ToString().Substring(10),
@@ -537,6 +551,19 @@ namespace VinayagaPlates.Application.Services
                                 throw new InvalidOperationException($"Insufficient funds in {acc.AccountName}. Available Cash In-Hand is ₹{available:N2}, but attempted to spend ₹{contrib.Amount:N2}. Please record a partner investment first.");
                             }
 
+                            var payment = new PurchasePayment
+                            {
+                                PurchaseId = purchase.PurchaseId,
+                                Amount = contrib.Amount,
+                                AccountId = acc.AccountId,
+                                PaymentMethod = "CASH",
+                                Notes = "Initial payment upon purchase creation",
+                                CreatedBy = username,
+                                CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
+                            };
+                            _db.PurchasePayments.Add(payment);
+                            await _db.SaveChangesAsync();
+
                             await _accountRepo.AddTransactionAsync(new AccountTransaction
                             {
                                 AccountId = acc.AccountId,
@@ -587,7 +614,7 @@ namespace VinayagaPlates.Application.Services
                                 TransactionType = "DEBIT",
                                 Amount = req.PaidAmount,
                                 ReferenceType = "PURCHASE",
-                                ReferenceId = payment.PaymentId.ToString(),
+                                ReferenceId = purchase.PurchaseId.ToString(),
                                 Description = $"Paid for Purchase {purchase.PurchaseNumber}",
                                 CreatedBy = username,
                                 CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
