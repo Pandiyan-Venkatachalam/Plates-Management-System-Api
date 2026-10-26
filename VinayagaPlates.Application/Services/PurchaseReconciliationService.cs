@@ -45,6 +45,8 @@ namespace VinayagaPlates.Application.Services
 
                 bool isPur16 = p.PurchaseNumber == "PUR-16" || p.PurchaseId == 16 || Math.Abs(p.TotalAmount - 79990m) < 0.01m;
                 bool isPur14 = p.PurchaseNumber == "PUR-14" || p.PurchaseId == 14 || Math.Abs(p.TotalAmount - 410m) < 0.01m;
+                bool isPur10 = p.PurchaseNumber == "PUR-10" || p.PurchaseId == 10 || Math.Abs(p.TotalAmount - 1150m) < 0.01m;
+                bool isPur11 = p.PurchaseNumber == "PUR-11" || p.PurchaseId == 11 || Math.Abs(p.TotalAmount - 3200m) < 0.01m;
 
                 // ----------------------------------------------------
                 // 1. PUR-14: Explicitly ensure ₹410 debit is on Pandiyan's hand
@@ -101,6 +103,66 @@ namespace VinayagaPlates.Application.Services
                             PaymentMethod = "CASH",
                             Notes = "Initial payment upon purchase creation",
                             CreatedBy = "Pandiyan",
+                            CreatedAt = p.PurchaseDate != default ? p.PurchaseDate : p.CreatedAt
+                        };
+                        db.PurchasePayments.Add(newPay);
+                        allPayments.Add(newPay);
+                        pPays.Add(newPay);
+                        changed = true;
+                    }
+                }
+                // ----------------------------------------------------
+                // 2. PUR-10 & PUR-11: Explicitly paid by Ranjith
+                // ----------------------------------------------------
+                else if ((isPur10 || isPur11) && ranjithAcc != null)
+                {
+                    foreach (var tx in pTxs)
+                    {
+                        if (tx.AccountId != ranjithAcc.AccountId)
+                        {
+                            tx.AccountId = ranjithAcc.AccountId;
+                            tx.Description = $"Paid ₹{tx.Amount:N2} for Purchase {p.PurchaseNumber} (Ranjith)";
+                            changed = true;
+                        }
+                    }
+
+                    if (!pTxs.Any())
+                    {
+                        var newTx = new AccountTransaction
+                        {
+                            AccountId = ranjithAcc.AccountId,
+                            TransactionType = "DEBIT",
+                            Amount = p.PaidAmount > 0 ? p.PaidAmount : p.TotalAmount,
+                            ReferenceType = "PURCHASE",
+                            ReferenceId = pidStr,
+                            Description = $"Paid ₹{p.PaidAmount:N2} for Purchase {p.PurchaseNumber} (Ranjith)",
+                            CreatedBy = "Ranjith",
+                            CreatedAt = p.PurchaseDate != default ? p.PurchaseDate : p.CreatedAt
+                        };
+                        db.AccountTransactions.Add(newTx);
+                        allTxs.Add(newTx);
+                        pTxs.Add(newTx);
+                        changed = true;
+                    }
+
+                    foreach (var pay in pPays)
+                    {
+                        if (pay.AccountId != ranjithAcc.AccountId)
+                        {
+                            pay.AccountId = ranjithAcc.AccountId;
+                            changed = true;
+                        }
+                    }
+                    if (!pPays.Any())
+                    {
+                        var newPay = new PurchasePayment
+                        {
+                            PurchaseId = p.PurchaseId,
+                            Amount = p.PaidAmount > 0 ? p.PaidAmount : p.TotalAmount,
+                            AccountId = ranjithAcc.AccountId,
+                            PaymentMethod = "CASH",
+                            Notes = "Initial payment upon purchase creation (Ranjith)",
+                            CreatedBy = "Ranjith",
                             CreatedAt = p.PurchaseDate != default ? p.PurchaseDate : p.CreatedAt
                         };
                         db.PurchasePayments.Add(newPay);
@@ -342,21 +404,6 @@ namespace VinayagaPlates.Application.Services
                             };
                             db.AccountTransactions.Add(newTx);
                             allTxs.Add(newTx);
-                            changed = true;
-                        }
-                    }
-
-                    // Fix single purchases created by Pandiyan that mistakenly fell back to Ranjith
-                    if (pandiyanAcc != null && ranjithAcc != null)
-                    {
-                        if (p.CreatedBy != null && p.CreatedBy.ToLower().Contains("pandiyan") && pTxs.Count == 1 && pTxs[0].AccountId == ranjithAcc.AccountId)
-                        {
-                            pTxs[0].AccountId = pandiyanAcc.AccountId;
-                            pTxs[0].Description = $"Paid ₹{pTxs[0].Amount:N2} for Purchase {p.PurchaseNumber} (Pandiyan)";
-                            if (pPays.Count == 1 && pPays[0].AccountId == ranjithAcc.AccountId)
-                            {
-                                pPays[0].AccountId = pandiyanAcc.AccountId;
-                            }
                             changed = true;
                         }
                     }
