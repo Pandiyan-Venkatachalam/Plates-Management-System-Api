@@ -47,6 +47,7 @@ namespace VinayagaPlates.Application.Services
                 bool isPur14 = p.PurchaseNumber == "PUR-14" || p.PurchaseId == 14 || Math.Abs(p.TotalAmount - 410m) < 0.01m;
                 bool isPur10 = p.PurchaseNumber == "PUR-10" || p.PurchaseId == 10 || Math.Abs(p.TotalAmount - 1150m) < 0.01m;
                 bool isPur11 = p.PurchaseNumber == "PUR-11" || p.PurchaseId == 11 || Math.Abs(p.TotalAmount - 3200m) < 0.01m;
+                bool isPur8 = p.PurchaseNumber == "PUR-30138631" || p.PurchaseId == 8 || Math.Abs(p.TotalAmount - 42640m) < 0.01m;
 
                 // ----------------------------------------------------
                 // 1. PUR-14: Explicitly ensure ₹410 debit is on Pandiyan's hand
@@ -112,9 +113,9 @@ namespace VinayagaPlates.Application.Services
                     }
                 }
                 // ----------------------------------------------------
-                // 2. PUR-10 & PUR-11: Explicitly paid by Ranjith
+                // 2. PUR-8, PUR-10 & PUR-11: Explicitly paid by Ranjith
                 // ----------------------------------------------------
-                else if ((isPur10 || isPur11) && ranjithAcc != null)
+                else if ((isPur10 || isPur11 || isPur8) && ranjithAcc != null)
                 {
                     foreach (var tx in pTxs)
                     {
