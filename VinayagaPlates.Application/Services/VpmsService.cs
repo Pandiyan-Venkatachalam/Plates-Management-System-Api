@@ -710,7 +710,18 @@ namespace VinayagaPlates.Application.Services
             await _salesRepo.AddAsync(sale);
             await _salesRepo.SaveChangesAsync();
 
-            var cashAcc = await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName);
+            var cashAcc = !string.IsNullOrWhiteSpace(req.PaymentMethodAccountName)
+                ? await _accountRepo.GetByNameAsync(req.PaymentMethodAccountName)
+                : null;
+
+            if (cashAcc == null)
+            {
+                var allAccounts = await _accountRepo.GetAllAsync();
+                cashAcc = allAccounts.FirstOrDefault(a => !string.IsNullOrEmpty(username) && a.AccountName.ToLower().Contains(username.ToLower()))
+                       ?? allAccounts.FirstOrDefault(a => !string.IsNullOrEmpty(username) && username.ToLower().Contains(a.AccountName.ToLower()))
+                       ?? allAccounts.FirstOrDefault();
+            }
+
             if (cashAcc != null && req.PaidAmount > 0)
             {
                 var payment = new SalePayment
@@ -718,7 +729,7 @@ namespace VinayagaPlates.Application.Services
                     SaleId = sale.SaleId,
                     Amount = req.PaidAmount,
                     AccountId = cashAcc.AccountId,
-                    PaymentMethod = "CASH",
+                    PaymentMethod = string.IsNullOrWhiteSpace(req.PaymentMethodAccountName) ? "CASH" : req.PaymentMethodAccountName,
                     Notes = "Initial payment upon sale creation",
                     CreatedBy = username,
                     CreatedAt = DateTime.UtcNow

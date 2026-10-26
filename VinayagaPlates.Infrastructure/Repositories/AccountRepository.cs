@@ -115,6 +115,53 @@ namespace VinayagaPlates.Infrastructure.Repositories
                 await Db.SaveChangesAsync();
             }
 
+            // 4. Backfill any Sales with PaidAmount > 0 that are missing SalePayments / AccountTransactions
+            var salesWithPaid = await Db.Sales.Where(s => s.PaidAmount > 0).ToListAsync();
+            var existingSalePayments = await Db.SalePayments.ToListAsync();
+            var allActiveTx = await Db.AccountTransactions.ToListAsync();
+
+            foreach (var s in salesWithPaid)
+            {
+                var paymentsForSale = existingSalePayments.Where(p => p.SaleId == s.SaleId).ToList();
+                var totalPaidInPayments = paymentsForSale.Sum(p => p.Amount);
+                var diff = s.PaidAmount - totalPaidInPayments;
+                if (diff > 0)
+                {
+                    var creator = (s.CreatedBy ?? "").ToLower();
+                    var targetAcc = businessAccounts.FirstOrDefault(a => a.AccountName.ToLower().Contains(creator) || creator.Contains(a.AccountName.ToLower())) ?? defaultAccount;
+                    if (targetAcc != null)
+                    {
+                        var newPayment = new SalePayment
+                        {
+                            SaleId = s.SaleId,
+                            Amount = diff,
+                            AccountId = targetAcc.AccountId,
+                            PaymentMethod = "CASH",
+                            Notes = "Payment on sale creation",
+                            CreatedBy = s.CreatedBy ?? "SYSTEM",
+                            CreatedAt = s.CreatedAt
+                        };
+                        await Db.SalePayments.AddAsync(newPayment);
+                        await Db.SaveChangesAsync();
+                        existingSalePayments.Add(newPayment);
+
+                        var newTx = new AccountTransaction
+                        {
+                            AccountId = targetAcc.AccountId,
+                            TransactionType = "CREDIT",
+                            Amount = diff,
+                            ReferenceType = "SALE_PAYMENT",
+                            ReferenceId = newPayment.PaymentId.ToString(),
+                            Description = $"Collected payment for Sale {s.SaleNumber}",
+                            CreatedBy = s.CreatedBy ?? "SYSTEM",
+                            CreatedAt = s.CreatedAt
+                        };
+                        await Db.AccountTransactions.AddAsync(newTx);
+                        await Db.SaveChangesAsync();
+                    }
+                }
+            }
+
             return await Db.AccountTransactions
                 .Include(t => t.Account)
                 .ToListAsync();
@@ -134,7 +181,8 @@ namespace VinayagaPlates.Infrastructure.Repositories
                 ?? all.FirstOrDefault(a => a.AccountName.Trim().ToLower() == trimmed)
                 ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && a.AccountType.Trim().ToLower() == trimmed)
                 ?? all.FirstOrDefault(a => a.AccountName.ToLower().Contains(trimmed) || trimmed.Contains(a.AccountName.ToLower()))
-                ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && (a.AccountType.ToLower().Contains(trimmed) || trimmed.Contains(a.AccountType.ToLower())));
+                ?? all.FirstOrDefault(a => !string.IsNullOrEmpty(a.AccountType) && (a.AccountType.ToLower().Contains(trimmed) || trimmed.Contains(a.AccountType.ToLower())))
+                ?? (trimmed == "cash" || trimmed == "cash in hand" || trimmed == "default" ? all.FirstOrDefault() : null);
         }
 
         public async Task AddAuditLogAsync(AuditLog log) =>
