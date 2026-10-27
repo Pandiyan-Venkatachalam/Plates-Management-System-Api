@@ -11,7 +11,7 @@ using VinayagaPlates.Application.Constants;
 
 namespace VinayagaPlates.Application.Services
 {
-    public class VpmsService
+    public partial class VpmsService
     {
         private readonly IUserRepository _userRepo;
         private readonly IProductRepository _productRepo;
@@ -1238,6 +1238,20 @@ namespace VinayagaPlates.Application.Services
                         throw new ArgumentException($"Cannot collect more than the remaining balance (₹{purchase.TotalAmount - currentPaidAmount:N2}).");
                     }
 
+                    var account = await _db.BusinessAccounts.FindAsync(req.AccountId);
+                    if (account == null) throw new ArgumentException("Payment account not found.");
+
+                    // Authoritative In-Hand Balance Check: Prevent spending money the account does not possess
+                    var txs = await _db.AccountTransactions.Where(t => t.AccountId == req.AccountId).ToListAsync();
+                    var credits = txs.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount);
+                    var debits = txs.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount);
+                    var available = credits - debits;
+
+                    if (req.Amount > available)
+                    {
+                        throw new InvalidOperationException($"Insufficient funds in {account.AccountName}. Available Cash In-Hand is ₹{available:N2}, but attempted to spend ₹{req.Amount:N2}. Please record a partner investment first.");
+                    }
+
                     var payment = new PurchasePayment
                     {
                         PurchaseId = purchaseId,
@@ -1251,7 +1265,6 @@ namespace VinayagaPlates.Application.Services
                     _db.PurchasePayments.Add(payment);
                     await _db.SaveChangesAsync();
 
-                    var account = await _db.BusinessAccounts.FindAsync(req.AccountId);
                     if (account != null)
                     {
                         await _accountRepo.AddTransactionAsync(new AccountTransaction

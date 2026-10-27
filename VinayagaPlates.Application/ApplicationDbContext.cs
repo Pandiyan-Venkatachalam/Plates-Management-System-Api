@@ -143,6 +143,12 @@ namespace VinayagaPlates.Application
             modelBuilder.Entity<InventoryBatch>().HasIndex(ib => ib.LocationId);
             modelBuilder.Entity<StockReservation>().HasIndex(sr => sr.OrderDetailId);
             modelBuilder.Entity<CustomerPricing>().HasIndex(cp => new { cp.CustomerId, cp.ProductId });
+            modelBuilder.Entity<AccountTransaction>().HasIndex(t => new { t.AccountId, t.CreatedAt });
+            modelBuilder.Entity<AccountTransaction>().HasIndex(t => new { t.ReferenceType, t.ReferenceId });
+            modelBuilder.Entity<Sale>().HasIndex(s => s.SaleDate);
+            modelBuilder.Entity<Purchase>().HasIndex(p => p.PurchaseDate);
+            modelBuilder.Entity<SalePayment>().HasIndex(sp => sp.SaleId);
+            modelBuilder.Entity<PurchasePayment>().HasIndex(pp => pp.PurchaseId);
 
             // Master Data Mapping
             modelBuilder.Entity<Product>()

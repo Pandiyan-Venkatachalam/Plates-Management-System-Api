@@ -163,85 +163,19 @@ namespace VinayagaPlates.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteSale(int id)
         {
-            using (var transaction = await _db.Database.BeginTransactionAsync())
+            try
             {
-                try
-                {
-                    var sale = await _db.Sales
-                        .Include(s => s.Details)
-                        .Include(s => s.Customer)
-                        .FirstOrDefaultAsync(s => s.SaleId == id);
-
-                    if (sale == null)
-                        return NotFound(ApiResponse<object>.Fail("Sale not found.", 404));
-
-                    // 1. Restore the batch quantities (revert deduction)
-                    foreach (var d in sale.Details)
-                    {
-                        if (d.BatchId > 0)
-                        {
-                            var batch = await _db.InventoryBatches.FindAsync(d.BatchId);
-                            if (batch != null)
-                            {
-                                batch.CurrentQuantity += d.Quantity;
-                            }
-                        }
-                    }
-                    
-                    int totalItems = sale.Details?.Sum(d => d.Quantity) ?? 0;
-
-                    // 2. Remove child sale details
-                    _db.SaleDetails.RemoveRange(sale.Details);
-                    await _db.SaveChangesAsync();
-
-                    // 3. Remove linked account transactions (Legacy SALE)
-                    var legacyTxs = await _db.AccountTransactions
-                        .Where(t => t.ReferenceType == "SALE" && (t.ReferenceId == id.ToString() || t.ReferenceId == sale.SaleNumber))
-                        .ToListAsync();
-                    if (legacyTxs.Any())
-                    {
-                        _db.AccountTransactions.RemoveRange(legacyTxs);
-                    }
-
-                    // 3b. Remove new SalePayments and their linked AccountTransactions
-                    var payments = await _db.SalePayments.Where(p => p.SaleId == id).ToListAsync();
-                    if (payments.Any())
-                    {
-                        var paymentIds = payments.Select(p => p.PaymentId.ToString()).ToList();
-                        var paymentTxs = await _db.AccountTransactions
-                            .Where(t => (t.ReferenceType == "SALE_PAYMENT" || t.ReferenceType == "SALE_REFUND") && paymentIds.Contains(t.ReferenceId))
-                            .ToListAsync();
-                        
-                        if (paymentTxs.Any())
-                            _db.AccountTransactions.RemoveRange(paymentTxs);
-                            
-                        _db.SalePayments.RemoveRange(payments);
-                    }
-
-                    // 4. Remove parent sale record
-                    _db.Sales.Remove(sale);
-                    await _db.SaveChangesAsync();
-
-                    await transaction.CommitAsync();
-
-                    var details = new { 
-                        sale.SaleId, 
-                        sale.SaleNumber, 
-                        CustomerName = sale.Customer?.CustomerName ?? $"Customer ID {sale.CustomerId}",
-                        sale.TotalAmount, 
-                        sale.PaidAmount, 
-                        sale.Status, 
-                        sale.SaleDate,
-                        TotalItems = totalItems
-                    };
-                    var response = ApiResponse<object>.Success(details, "Sale deleted successfully and stock reverted.");
-                    return StatusCode(response.StatusCode, response);
-                }
-                catch (Exception ex)
-                {
-                    await transaction.RollbackAsync();
-                    return StatusCode(500, ApiResponse<object>.Fail($"Error deleting sale: {ex.Message}", 500));
-                }
+                var details = await _vpms.DeleteSaleAsync(id);
+                var response = ApiResponse<object>.Success(details, "Sale deleted successfully and stock reverted.");
+                return StatusCode(response.StatusCode, response);
+            }
+            catch (ArgumentException ex)
+            {
+                return NotFound(ApiResponse<object>.Fail(ex.Message, 404));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<object>.Fail($"Error deleting sale: {ex.Message}", 500));
             }
         }
 

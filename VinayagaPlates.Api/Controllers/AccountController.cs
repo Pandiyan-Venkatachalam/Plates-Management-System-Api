@@ -14,10 +14,12 @@ namespace VinayagaPlates.Api.Controllers
     public class AccountController : ControllerBase
     {
         private readonly IAccountRepository _accountRepo;
+        private readonly VinayagaPlates.Application.Services.VpmsService _vpms;
 
-        public AccountController(IAccountRepository accountRepo)
+        public AccountController(IAccountRepository accountRepo, VinayagaPlates.Application.Services.VpmsService vpms)
         {
             _accountRepo = accountRepo;
+            _vpms = vpms;
         }
 
         [HttpGet]
@@ -96,6 +98,13 @@ namespace VinayagaPlates.Api.Controllers
         {
             var data = await _accountRepo.GetTransactionsAsync();
             return StatusCode(200, ApiResponse<object>.Success(data, "Transactions retrieved successfully."));
+        }
+
+        [HttpGet("ledger-summary")]
+        public async Task<IActionResult> GetLedgerSummary([FromQuery] DateTime? fromDate, [FromQuery] DateTime? toDate)
+        {
+            var summary = await _vpms.GetBusinessAccountLedgerSummaryAsync(fromDate, toDate);
+            return StatusCode(200, ApiResponse<object>.Success(summary, "Ledger summary computed successfully."));
         }
     }
 }

@@ -122,7 +122,7 @@ namespace VinayagaPlates.Tests
                 var accountRepo = new MockAccountRepository(db);
                 var batchRepo = new MockBatchRepository(db);
                 var service = new VpmsService(
-                    null, null, purchaseRepo, null, null, accountRepo, batchRepo, null, null, db);
+                    null, null, purchaseRepo, null, null, accountRepo, batchRepo, null, null, db, null, null);
 
                 // Purchase 100 of P1 @ ₹10.00 and 300 of P2 @ ₹20.00 (Total Qty = 400)
                 // Expense = ₹400.00 (Quantity Based) -> Expect ₹1.00 allocated per unit
@@ -176,7 +176,7 @@ namespace VinayagaPlates.Tests
                 var accountRepo = new MockAccountRepository(db);
                 var batchRepo = new MockBatchRepository(db);
                 var service = new VpmsService(
-                    null, null, purchaseRepo, null, null, accountRepo, batchRepo, null, null, db);
+                    null, null, purchaseRepo, null, null, accountRepo, batchRepo, null, null, db, null, null);
 
                 // P1 = 100 units @ ₹10 = ₹1,000
                 // P2 = 100 units @ ₹30 = ₹3,000
