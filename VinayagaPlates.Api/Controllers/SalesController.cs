@@ -35,18 +35,59 @@ namespace VinayagaPlates.Api.Controllers
             var data = await _salesRepo.GetSalesWithDetailsAsync();
             var saleIds = data.Select(s => s.SaleId.ToString()).ToHashSet();
             var saleNumbers = data.Where(s => !string.IsNullOrEmpty(s.SaleNumber)).Select(s => s.SaleNumber).ToHashSet();
+            var saleIdInts = data.Select(s => s.SaleId).ToList();
+
+            // 1. Fetch payments and transactions
+            var payments = await _db.SalePayments
+                .Include(p => p.Account)
+                .Where(p => saleIdInts.Contains(p.SaleId))
+                .ToListAsync();
+            var paymentLookup = payments.ToLookup(p => p.SaleId);
+
+            var paymentIds = payments.Select(p => p.PaymentId.ToString()).ToHashSet();
 
             var linkedTxs = await _db.AccountTransactions
                 .Include(t => t.Account)
-                .Where(t => t.ReferenceType == "SALE" && (saleIds.Contains(t.ReferenceId) || saleNumbers.Contains(t.ReferenceId)))
+                .Where(t => (t.ReferenceType == "SALE" || t.ReferenceType == "SALE_PAYMENT") && 
+                            (saleIds.Contains(t.ReferenceId) || saleNumbers.Contains(t.ReferenceId) || paymentIds.Contains(t.ReferenceId)))
                 .ToListAsync();
 
             var txLookup = linkedTxs.ToLookup(t => t.ReferenceId);
 
             var resp = data.Select(s => {
-                var tx = txLookup[s.SaleId.ToString()].FirstOrDefault() ?? txLookup[s.SaleNumber].FirstOrDefault();
-                var accName = tx?.Account?.AccountName ?? "";
-                var accId = tx?.AccountId ?? 0;
+                var paymentList = paymentLookup[s.SaleId].ToList();
+                var pIds = paymentList.Select(p => p.PaymentId.ToString()).ToHashSet();
+                var txList = txLookup[s.SaleId.ToString()]
+                    .Concat(txLookup[s.SaleNumber])
+                    .Concat(linkedTxs.Where(t => pIds.Contains(t.ReferenceId)))
+                    .ToList();
+
+                var accountNames = paymentList
+                    .Select(x => !string.IsNullOrWhiteSpace(x.Account?.AccountName) ? x.Account.AccountName : (!string.IsNullOrWhiteSpace(x.PaymentMethod) && x.PaymentMethod != "CASH" ? x.PaymentMethod : null))
+                    .Concat(txList.Select(t => t.Account?.AccountName))
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (!accountNames.Any() && s.PaidAmount > 0)
+                {
+                    var createdByList = paymentList.Select(p => p.CreatedBy)
+                        .Where(cb => !string.IsNullOrWhiteSpace(cb) && cb != "SYSTEM")
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    if (createdByList.Any())
+                    {
+                        accountNames.AddRange(createdByList);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(s.CreatedBy) && s.CreatedBy != "SYSTEM")
+                    {
+                        accountNames.Add(s.CreatedBy);
+                    }
+                }
+
+                string accName = string.Join(", ", accountNames);
+                int accId = paymentList.FirstOrDefault()?.AccountId ?? txList.FirstOrDefault()?.AccountId ?? 0;
 
                 return new {
                     s.SaleId,
@@ -56,7 +97,7 @@ namespace VinayagaPlates.Api.Controllers
                     s.SaleDate,
                     s.TotalAmount,
                     s.PaidAmount,
-                    BalanceAmount = s.TotalAmount - s.PaidAmount,
+                    BalanceAmount = Math.Max(0, s.TotalAmount - s.PaidAmount),
                     s.PaymentStatus,
                     s.Status,
                     AccountId = accId,
