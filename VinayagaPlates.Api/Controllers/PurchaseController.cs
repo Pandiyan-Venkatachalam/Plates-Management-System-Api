@@ -37,10 +37,7 @@ namespace VinayagaPlates.Api.Controllers
             var purchaseNumbers = data.Where(p => !string.IsNullOrEmpty(p.PurchaseNumber)).Select(p => p.PurchaseNumber).ToHashSet();
             var purchaseIdInts = data.Select(p => p.PurchaseId).ToList();
 
-            // 1. Reconcile purchases, payments, and account transactions
-            await PurchaseReconciliationService.ReconcilePurchasesAndAccountsAsync(_db);
-
-            // 2. Fetch payments and transactions
+            // 1. Fetch payments and transactions
             var payments = await _db.PurchasePayments
                 .Include(p => p.Account)
                 .Where(p => purchaseIdInts.Contains(p.PurchaseId))
@@ -216,7 +213,7 @@ namespace VinayagaPlates.Api.Controllers
                     var paymentIdStrs = payments.Select(p => p.PaymentId.ToString()).ToList();
 
                     var linkedTxs = await _db.AccountTransactions
-                        .Where(t => t.ReferenceType == "PURCHASE" && 
+                        .Where(t => (t.ReferenceType == "PURCHASE" || t.ReferenceType == "PURCHASE_PAYMENT") && 
                             (t.ReferenceId == id.ToString() || 
                              t.ReferenceId == purchase.PurchaseNumber || 
                              paymentIdStrs.Contains(t.ReferenceId)))

@@ -1259,12 +1259,13 @@ namespace VinayagaPlates.Application.Services
                             AccountId = req.AccountId,
                             TransactionType = "DEBIT",
                             Amount = req.Amount,
-                            ReferenceType = "PURCHASE",
+                            ReferenceType = "PURCHASE_PAYMENT",
                             ReferenceId = payment.PaymentId.ToString(),
                             Description = $"Payment for Purchase {purchase.PurchaseNumber} via {req.PaymentMethod}",
                             CreatedBy = username,
                             CreatedAt = DateTime.UtcNow
                         });
+                        await _db.SaveChangesAsync(); // Persist account transaction
                     }
 
                     var allPayments = await _db.PurchasePayments.Where(p => p.PurchaseId == purchaseId).SumAsync(p => p.Amount);
@@ -1390,13 +1391,13 @@ namespace VinayagaPlates.Application.Services
                     var purchase = await _db.Purchases.Include(p => p.Supplier).FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
                     if (purchase == null) throw new ArgumentException("Purchase not found.");
 
-                    var isRefund = payment.Amount < 0;
-                    var refType = isRefund ? "PURCHASE_REFUND" : "PURCHASE";
-
                     var relatedTxs = await _db.AccountTransactions
-                        .Where(t => t.ReferenceType == refType && t.ReferenceId == payment.PaymentId.ToString())
+                        .Where(t => (t.ReferenceType == "PURCHASE_PAYMENT" || t.ReferenceType == "PURCHASE" || t.ReferenceType == "PURCHASE_REFUND") && t.ReferenceId == payment.PaymentId.ToString())
                         .ToListAsync();
-                    _db.AccountTransactions.RemoveRange(relatedTxs);
+                    if (relatedTxs.Any())
+                    {
+                        _db.AccountTransactions.RemoveRange(relatedTxs);
+                    }
 
                     _db.PurchasePayments.Remove(payment);
                     await _db.SaveChangesAsync();
