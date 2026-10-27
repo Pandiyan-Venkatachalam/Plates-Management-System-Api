@@ -569,8 +569,8 @@ namespace VinayagaPlates.Application.Services
                                 AccountId = acc.AccountId,
                                 TransactionType = "DEBIT",
                                 Amount = contrib.Amount,
-                                ReferenceType = "PURCHASE",
-                                ReferenceId = purchase.PurchaseId.ToString(),
+                                ReferenceType = "PURCHASE_PAYMENT",
+                                ReferenceId = payment.PaymentId.ToString(),
                                 Description = $"Paid ₹{contrib.Amount:N2} for Purchase {purchase.PurchaseNumber}",
                                 CreatedBy = username,
                                 CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
@@ -616,8 +616,8 @@ namespace VinayagaPlates.Application.Services
                                 AccountId = cashAcc.AccountId,
                                 TransactionType = "DEBIT",
                                 Amount = req.PaidAmount,
-                                ReferenceType = "PURCHASE",
-                                ReferenceId = purchase.PurchaseId.ToString(),
+                                ReferenceType = "PURCHASE_PAYMENT",
+                                ReferenceId = payment.PaymentId.ToString(),
                                 Description = $"Paid for Purchase {purchase.PurchaseNumber}",
                                 CreatedBy = username,
                                 CreatedAt = purchase.PurchaseDate != default ? purchase.PurchaseDate : DateTime.UtcNow
@@ -1391,9 +1391,27 @@ namespace VinayagaPlates.Application.Services
                     var purchase = await _db.Purchases.Include(p => p.Supplier).FirstOrDefaultAsync(p => p.PurchaseId == purchaseId);
                     if (purchase == null) throw new ArgumentException("Purchase not found.");
 
+                    // 1. Primary lookup: Match AccountTransactions directly linked to this PaymentId
                     var relatedTxs = await _db.AccountTransactions
                         .Where(t => (t.ReferenceType == "PURCHASE_PAYMENT" || t.ReferenceType == "PURCHASE" || t.ReferenceType == "PURCHASE_REFUND") && t.ReferenceId == payment.PaymentId.ToString())
                         .ToListAsync();
+
+                    // 2. Backward-compatible fallback: For initial creation payments where ReferenceId was saved as PurchaseId
+                    if (!relatedTxs.Any())
+                    {
+                        var pidStr = purchaseId.ToString();
+                        var legacyTx = await _db.AccountTransactions
+                            .FirstOrDefaultAsync(t => (t.ReferenceType == "PURCHASE" || t.ReferenceType == "PURCHASE_PAYMENT") &&
+                                (t.ReferenceId == pidStr || t.ReferenceId == purchase.PurchaseNumber) &&
+                                t.AccountId == payment.AccountId &&
+                                Math.Abs(t.Amount - payment.Amount) < 0.01m);
+
+                        if (legacyTx != null)
+                        {
+                            relatedTxs.Add(legacyTx);
+                        }
+                    }
+
                     if (relatedTxs.Any())
                     {
                         _db.AccountTransactions.RemoveRange(relatedTxs);
