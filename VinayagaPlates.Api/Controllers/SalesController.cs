@@ -44,50 +44,58 @@ namespace VinayagaPlates.Api.Controllers
                 .ToListAsync();
             var paymentLookup = payments.ToLookup(p => p.SaleId);
 
-            var paymentIds = payments.Select(p => p.PaymentId.ToString()).ToHashSet();
-
+            // 2. Fetch linked transactions ONLY for legacy fallback (matching SaleNumber strictly)
             var linkedTxs = await _db.AccountTransactions
                 .Include(t => t.Account)
-                .Where(t => (t.ReferenceType == "SALE" || t.ReferenceType == "SALE_PAYMENT") && 
-                            (saleIds.Contains(t.ReferenceId) || saleNumbers.Contains(t.ReferenceId) || paymentIds.Contains(t.ReferenceId)))
+                .Where(t => t.ReferenceType == "SALE" && saleNumbers.Contains(t.ReferenceId))
                 .ToListAsync();
 
             var txLookup = linkedTxs.ToLookup(t => t.ReferenceId);
 
             var resp = data.Select(s => {
                 var paymentList = paymentLookup[s.SaleId].ToList();
-                var pIds = paymentList.Select(p => p.PaymentId.ToString()).ToHashSet();
-                var txList = txLookup[s.SaleId.ToString()]
-                    .Concat(txLookup[s.SaleNumber])
-                    .Concat(linkedTxs.Where(t => pIds.Contains(t.ReferenceId)))
-                    .ToList();
+                List<string> accountNames;
 
-                var accountNames = paymentList
-                    .Select(x => !string.IsNullOrWhiteSpace(x.Account?.AccountName) ? x.Account.AccountName : (!string.IsNullOrWhiteSpace(x.PaymentMethod) && x.PaymentMethod != "CASH" ? x.PaymentMethod : null))
-                    .Concat(txList.Select(t => t.Account?.AccountName))
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (!accountNames.Any() && s.PaidAmount > 0)
+                if (paymentList.Any())
                 {
-                    var createdByList = paymentList.Select(p => p.CreatedBy)
-                        .Where(cb => !string.IsNullOrWhiteSpace(cb) && cb != "SYSTEM")
+                    // Strictly use the accounts/collectors from the actual payments recorded on this sale
+                    accountNames = paymentList
+                        .Select(x => !string.IsNullOrWhiteSpace(x.Account?.AccountName) ? x.Account.AccountName : (!string.IsNullOrWhiteSpace(x.PaymentMethod) && x.PaymentMethod != "CASH" ? x.PaymentMethod : null))
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
 
-                    if (createdByList.Any())
+                    if (!accountNames.Any())
                     {
-                        accountNames.AddRange(createdByList);
+                        accountNames = paymentList
+                            .Select(x => x.CreatedBy)
+                            .Where(cb => !string.IsNullOrWhiteSpace(cb) && cb != "SYSTEM")
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
                     }
-                    else if (!string.IsNullOrWhiteSpace(s.CreatedBy) && s.CreatedBy != "SYSTEM")
+                }
+                else if (s.PaidAmount > 0)
+                {
+                    // Fallback only if no SalePayments records exist
+                    var txList = txLookup[s.SaleNumber].ToList();
+                    accountNames = txList
+                        .Select(t => t.Account?.AccountName)
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    if (!accountNames.Any() && !string.IsNullOrWhiteSpace(s.CreatedBy) && s.CreatedBy != "SYSTEM")
                     {
                         accountNames.Add(s.CreatedBy);
                     }
                 }
+                else
+                {
+                    accountNames = new List<string>();
+                }
 
                 string accName = string.Join(", ", accountNames);
-                int accId = paymentList.FirstOrDefault()?.AccountId ?? txList.FirstOrDefault()?.AccountId ?? 0;
+                int accId = paymentList.FirstOrDefault()?.AccountId ?? 0;
 
                 return new {
                     s.SaleId,
