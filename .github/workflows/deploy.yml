@@ -1,0 +1,65 @@
+name: Deploy Backend API to VPS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore Dependencies
+      run: dotnet restore VinayagaPlates.sln
+
+    - name: Run Unit Tests
+      run: dotnet test VinayagaPlates.sln --no-restore --verbosity normal
+
+    - name: Publish Release Bundle
+      run: dotnet publish VinayagaPlates.Api/VinayagaPlates.Api.csproj -c Release -o ./publish
+
+    - name: Stop API Service on VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT || 22 }}
+        script: |
+          sudo systemctl stop vpms-api || true
+          mkdir -p /var/www/vpms-api
+
+    - name: Copy Published Files to VPS
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT || 22 }}
+        source: "./publish/*"
+        target: "/var/www/vpms-api"
+        strip_components: 1
+        overwrite: true
+
+    - name: Start API Service on VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT || 22 }}
+        script: |
+          sudo systemctl start vpms-api
+          sudo systemctl status vpms-api --no-pager
